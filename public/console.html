@@ -2207,7 +2207,7 @@ button:active:not(:disabled) {
       <label style="display:block;margin:8px 0"><input type="checkbox" id="voiceOnlineConsent" aria-describedby="voiceOnlineDisclosure" style="width:auto"> <span id="voiceConsentLabel">我同意将朗读文字发送到 Microsoft 在线语音服务</span></label>
       <div id="voiceMimoSettings" hidden>
         <div class="row"><label for="voiceMimoApiKey" style="flex:0 0 auto">MiMo Key</label><input id="voiceMimoApiKey" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已保存的 Key；只保存在本机" style="flex:1;min-width:0"></div>
-        <label><input id="voiceMimoClearKey" type="checkbox" style="width:auto"> 清除本机 MiMo Key</label><div id="voiceMimoKeyStatus" class="meta">尚未读取 Key 状态</div>
+        <label><input id="voiceMimoClearKey" type="checkbox" autocomplete="off" style="width:auto"> 清除本机 MiMo Key（保存时需确认）</label><div id="voiceMimoKeyStatus" class="meta">尚未读取 Key 状态</div>
         <label for="voiceMimoStyle">语气／风格（可选，最多 200 字）</label><input id="voiceMimoStyle" type="text" maxlength="200" placeholder="例如：温柔自然，轻松聊天，不要播音腔" style="width:100%;box-sizing:border-box">
         <div class="meta">固定使用小米官方接口，不会复用聊天模型 Token。风格描述也会发送到小米；语速为模型风格提示，不保证精确百分比。</div>
       </div>
@@ -3842,6 +3842,7 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
   const incoming = result.config?.incoming || {};
   const tts = result.config?.tts || {};
   if (updateDraft && !voiceSpeechSettingsDirty) {
+    document.getElementById('voiceMimoClearKey').checked = false;
     document.getElementById('voiceIncomingEnabled').checked = incoming.enabled === true;
     document.getElementById('voiceTtsEnabled').checked = tts.enabled === true;
     document.getElementById('voiceTtsProvider').value = tts.provider === 'mimo' ? 'mimo' : 'edge';
@@ -3914,6 +3915,10 @@ function voiceSpeechSettingsPayload() {
   const mimoApiKey = document.getElementById('voiceMimoApiKey').value;
   const clearMimoApiKey = document.getElementById('voiceMimoClearKey').checked;
   if (mimoApiKey && clearMimoApiKey) throw new Error('不能同时填写和清除 MiMo Key');
+  if (clearMimoApiKey && !confirm('确定清除本机 MiMo Key？清除后 MiMo 试听和聊天语音将不可用，必须重新填写 Key 才能恢复。普通保存无需清除 Key。')) {
+    document.getElementById('voiceMimoClearKey').checked = false;
+    throw new Error('已取消清除 MiMo Key；未保存任何参数，可再次保存其他设置');
+  }
   return { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, provider: voiceSpeechProvider(), style: document.getElementById('voiceMimoStyle').value.trim(), voice: input.voice, rate: input.rate, randomReplyProbability }, ...(mimoApiKey ? { mimoApiKey } : {}), ...(clearMimoApiKey ? { clearMimoApiKey: true } : {}) };
 }
 function voiceSpeechSettingsMatch(result, payload) {

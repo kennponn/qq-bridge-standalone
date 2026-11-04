@@ -149,6 +149,10 @@ test('narrow console API stores MiMo key separately, never returns it or changes
       assert.equal(JSON.stringify(stored).includes(KEY), false); assert.equal(stored.engine.directLLM.model, 'fixture-chat');
       assert.equal(loadMimoApiKey(h.temp, {}), KEY);
       const read = await call(port, '/api/voice/settings'); assert.equal(JSON.stringify(read.json).includes(KEY), false);
+      const adjusted = await call(port, '/api/voice/settings', { method: 'POST', body: { mimoApiKey: '', tts: { rate: -15, voice: '茉莉' } } });
+      assert.equal(adjusted.status, 200); assert.equal(adjusted.json.mimoSecret.configured, true);
+      assert.equal(adjusted.json.config.tts.rate, -15); assert.equal(adjusted.json.config.tts.voice, '茉莉');
+      assert.equal(loadMimoApiKey(h.temp, {}), KEY);
       assert.equal(h.calls.http.length, 0);
       const cleared = await call(port, '/api/voice/settings', { method: 'POST', body: { clearMimoApiKey: true } });
       assert.equal(cleared.json.mimoSecret.configured, false);

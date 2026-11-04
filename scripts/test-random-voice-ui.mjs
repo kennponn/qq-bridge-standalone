@@ -32,6 +32,8 @@ function fixture() {
     enabled: true, onlineConsent: true, voice: 'zh-CN-XiaoxiaoNeural', rate: 0, randomReplyProbability: 20,
   } }, status: { ttsReady: true } };
   const requests = [];
+  const confirmations = [];
+  let confirmClear = false;
   let hook;
   const context = vm.createContext({ URL, document: {
     getElementById(id) { assert.ok(nodes.has(id), id); return nodes.get(id); },
@@ -39,6 +41,7 @@ function fixture() {
     querySelector() { return toolCheckbox; },
     querySelectorAll() { return [toolCheckbox]; },
   },
+    confirm(message) { confirmations.push(message); return confirmClear; },
     async api(path, method, body) {
       const request = { path, method, body }; requests.push(request);
       if (hook) { const answer = await hook(request); if (answer !== undefined) return answer; }
@@ -55,7 +58,7 @@ function fixture() {
     },
   });
   vm.runInContext(source + '\n' + configSource + '\nthis.controller = { renderVoiceSpeechSettings, saveVoiceSpeechSettings, loadVoiceSpeechSettings, syncVoiceSpeechButtons, saveV2Config, hasVoiceSpeechDraft };', context);
-  return { nodes, result, requests, toolCheckbox, controller: context.controller, hook(value) { hook = value; } };
+  return { nodes, result, requests, confirmations, confirmClear(value) { confirmClear = value; }, toolCheckbox, controller: context.controller, hook(value) { hook = value; } };
 }
 
 test('saved percentage and actual AI permission render separately, with zero for old configs', () => {
@@ -109,6 +112,56 @@ test('general parameter save does not leak MiMo Key into the full configuration 
   assert.ok(general); assert.ok(voice);
   assert.equal(JSON.stringify(general.body).includes('fixture-mimo-ui-key'), false);
   assert.equal(voice.body.mimoApiKey, 'fixture-mimo-ui-key');
+});
+
+test('clean refresh unchecks a restored clear option but preserves an explicit unsaved draft', () => {
+  const f = fixture(); f.nodes.get('voiceMimoClearKey').checked = true;
+  f.controller.renderVoiceSpeechSettings(f.result);
+  assert.equal(f.nodes.get('voiceMimoClearKey').checked, false);
+  f.nodes.get('voiceMimoClearKey').checked = true; f.nodes.get('voiceMimoClearKey').listeners.input();
+  f.controller.renderVoiceSpeechSettings(f.result);
+  assert.equal(f.nodes.get('voiceMimoClearKey').checked, true);
+});
+
+test('cancelled MiMo clear blocks narrow and general saves before any write', async () => {
+  for (const general of [false, true]) {
+    const f = fixture(); f.result.mimoSecret = { configured: true };
+    f.controller.renderVoiceSpeechSettings(f.result);
+    f.nodes.get('voiceMimoClearKey').checked = true; f.nodes.get('voiceMimoClearKey').listeners.input();
+    if (general) await f.controller.saveV2Config();
+    else assert.equal(await f.controller.saveVoiceSpeechSettings(), false);
+    assert.equal(f.confirmations.length, 1); assert.match(f.confirmations[0], /聊天语音将不可用/);
+    assert.equal(f.requests.length, 0); assert.equal(f.result.mimoSecret.configured, true);
+    assert.equal(f.nodes.get('voiceMimoClearKey').checked, false);
+    assert.equal(await f.controller.saveVoiceSpeechSettings(), true);
+    assert.equal(f.result.mimoSecret.configured, true);
+    assert.equal(f.requests[0].body.clearMimoApiKey, undefined);
+  }
+});
+
+test('confirmed MiMo clear works for narrow and general saves and is not repeated', async () => {
+  for (const general of [false, true]) {
+    const f = fixture(); f.result.mimoSecret = { configured: true };
+    f.controller.renderVoiceSpeechSettings(f.result); f.confirmClear(true);
+    f.nodes.get('voiceMimoClearKey').checked = true; f.nodes.get('voiceMimoClearKey').listeners.input();
+    if (general) await f.controller.saveV2Config(); else assert.equal(await f.controller.saveVoiceSpeechSettings(), true);
+    assert.equal(f.confirmations.length, 1); assert.equal(f.result.mimoSecret.configured, false);
+    assert.equal(f.nodes.get('voiceMimoClearKey').checked, false);
+    const voice = f.requests.find(request => request.path === '/api/voice/settings' && request.method === 'POST');
+    assert.equal(voice.body.clearMimoApiKey, true);
+    await f.controller.saveVoiceSpeechSettings(); assert.equal(f.confirmations.length, 1);
+    assert.equal(f.requests.at(-2).body.clearMimoApiKey, undefined);
+  }
+});
+
+test('ordinary saves with a blank key retain stored credentials without asking to clear', async () => {
+  const f = fixture(); f.result.mimoSecret = { configured: true }; f.controller.renderVoiceSpeechSettings(f.result);
+  f.nodes.get('voiceTtsRate').value = '-15'; f.nodes.get('voiceTtsRate').listeners.input();
+  await f.controller.saveV2Config();
+  assert.equal(f.result.mimoSecret.configured, true); assert.equal(f.confirmations.length, 0);
+  const voice = f.requests.find(request => request.path === '/api/voice/settings' && request.method === 'POST');
+  assert.equal(voice.body.mimoApiKey, undefined); assert.equal(voice.body.clearMimoApiKey, undefined);
+  assert.equal(voice.body.tts.rate, -15);
 });
 
 test('saving valid probabilities carries AI toggle, preserves consent/voice and never sends QQ', async () => {
