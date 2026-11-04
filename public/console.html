@@ -3781,6 +3781,7 @@ let voiceSpeechSaved = null;
 let voiceSpeechBusy = false;
 let voiceSettingsRevision = 0;
 let voiceSpeechDraftRevision = 0;
+let voiceSpeechSettingsDirty = false;
 let voiceSpeechPreview = null;
 let voiceSpeechObjectUrl = '';
 function setVoiceSpeechMessage(id, text, kind = '') {
@@ -3817,7 +3818,7 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
   voiceSpeechSaved = result;
   const incoming = result.config?.incoming || {};
   const tts = result.config?.tts || {};
-  if (updateDraft) {
+  if (updateDraft && !voiceSpeechSettingsDirty) {
     document.getElementById('voiceIncomingEnabled').checked = incoming.enabled === true;
     document.getElementById('voiceTtsEnabled').checked = tts.enabled === true;
     document.getElementById('voiceOnlineConsent').checked = tts.onlineConsent === true;
@@ -3840,6 +3841,7 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
     const probability = Number(tts.randomReplyProbability) || 0;
     setVoiceSpeechMessage('voiceSettingsStatus', result.aiSendEnabled !== true ? '在线女声已就绪；AI 发语音已关闭（可手动试听／发送）' : ('在线女声已就绪；' + (probability > 0 ? '随机回复概率 ' + probability + '%' : '随机语音回复已关闭')), 'ok');
   }
+  if (voiceSpeechSettingsDirty) setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；刷新只更新状态，不会覆盖当前输入');
   syncVoiceSpeechButtons();
 }
 async function loadVoiceSpeechSettings(force = false) {
@@ -3871,29 +3873,45 @@ async function loadVoiceSpeechTargets() {
     if (keys.includes(previous)) select.value = previous;
   } catch (error) { setVoiceSpeechMessage('voiceTtsStatus', '读取发送目标失败：' + (error.message || '请刷新'), 'err'); }
 }
-async function saveVoiceSpeechSettings() {
-  if (voiceSpeechBusy) return;
+function hasVoiceSpeechDraft() { return voiceSpeechSettingsDirty; }
+function voiceSpeechSettingsPayload() {
   if (document.getElementById('voiceTtsEnabled').checked && !document.getElementById('voiceOnlineConsent').checked) {
-    setVoiceSpeechMessage('voiceSettingsStatus', '启用前请明确同意将朗读文字发送到 Microsoft', 'err'); return;
+    throw new Error('启用前请明确同意将朗读文字发送到 Microsoft');
   }
-  let input;
-  try { input = voiceSpeechInput(); } catch (error) { setVoiceSpeechMessage('voiceSettingsStatus', error.message, 'err'); return; }
+  const input = voiceSpeechInput();
   const rawProbability = document.getElementById('voiceRandomProbability').value;
   const randomReplyProbability = Number(rawProbability);
   if (rawProbability.trim() === '' || !Number.isInteger(randomReplyProbability) || randomReplyProbability < 0 || randomReplyProbability > 100) {
-    setVoiceSpeechMessage('voiceSettingsStatus', '随机语音概率必须是 0 到 100 的整数', 'err'); return;
+    throw new Error('随机语音概率必须是 0 到 100 的整数');
   }
-  const draftRevision = voiceSpeechDraftRevision;
+  return { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, voice: input.voice, rate: input.rate, randomReplyProbability } };
+}
+function voiceSpeechSettingsMatch(result, payload) {
+  return result?.ok === true && result.config?.enabled === payload.enabled && result.aiSendEnabled === payload.enabled
+    && result.config?.incoming?.enabled === payload.incoming.enabled
+    && Object.entries(payload.tts).every(([field, value]) => result.config?.tts?.[field] === value);
+}
+async function saveVoiceSpeechSettings({ payload, draftRevision = voiceSpeechDraftRevision, fromV2 = false } = {}) {
+  if (voiceSpeechBusy || (!fromV2 && typeof v2ConfigSaveBusy !== 'undefined' && v2ConfigSaveBusy)) return false;
+  try { payload = payload || voiceSpeechSettingsPayload(); }
+  catch (error) { setVoiceSpeechMessage('voiceSettingsStatus', error.message, 'err'); return false; }
   voiceSettingsRevision++;
   voiceSpeechBusy = true; syncVoiceSpeechButtons();
+  setVoiceSpeechMessage('voiceSettingsStatus', '正在保存并核对语音设置…');
   try {
-    const result = await api('/api/voice/settings', 'POST', { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, voice: input.voice, rate: input.rate, randomReplyProbability } });
+    const result = await api('/api/voice/settings', 'POST', payload);
     if (!result.ok) throw new Error(result.error || '保存失败');
     invalidateVoiceSpeechPreview();
     const loaded = await api('/api/voice/settings');
     if (!loaded.ok) throw new Error('设置已保存，但状态刷新失败，请重新刷新');
+    if (!voiceSpeechSettingsMatch(loaded, payload)) throw new Error('语音设置未获确认，读取值与提交值不一致，请重试保存');
+    if (draftRevision === voiceSpeechDraftRevision) voiceSpeechSettingsDirty = false;
     renderVoiceSpeechSettings(loaded, draftRevision === voiceSpeechDraftRevision);
-  } catch (error) { setVoiceSpeechMessage('voiceSettingsStatus', String(error.message || '保存失败'), 'err'); }
+    const toolCheckbox = document.querySelector?.('[data-v2-tool="sendVoice"]');
+    if (toolCheckbox) toolCheckbox.checked = loaded.aiSendEnabled === true;
+    if (!voiceSpeechSettingsDirty) setVoiceSpeechMessage('voiceSettingsStatus', '语音设置已保存并核对；随机概率 ' + payload.tts.randomReplyProbability + '%' + (payload.enabled ? '' : '（AI 发语音关闭，仅保存概率）'), 'ok');
+    return true;
+  } catch (error) { setVoiceSpeechMessage('voiceSettingsStatus', String(error.message || '保存失败'), 'err'); return false; }
   finally { voiceSpeechBusy = false; syncVoiceSpeechButtons(); }
 }
 function requireVoiceSpeechInput() {
@@ -3953,7 +3971,10 @@ async function sendVoiceSpeech() {
 }
 for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent', 'voiceAiEnabled', 'voiceRandomProbability', 'voiceTtsVoice', 'voiceTtsRate', 'voiceTtsText']) document.getElementById(id).addEventListener('input', () => {
   voiceSpeechDraftRevision++; invalidateVoiceSpeechPreview(); syncVoiceSpeechButtons();
-  if (id !== 'voiceTtsText') setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；启用／同意开关须保存才生效');
+  if (id !== 'voiceTtsText') {
+    voiceSpeechSettingsDirty = true;
+    setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；点击“保存语音设置”或页面“保存当前参数”均可保存');
+  }
 });
 document.getElementById('voiceSettingsSave').addEventListener('click', saveVoiceSpeechSettings);
 document.getElementById('voiceSettingsRefresh').addEventListener('click', () => loadVoiceSpeechSettings());
@@ -4213,7 +4234,21 @@ async function loadV2Config() {
 }
 
 async function saveV2Config() {
-  if (alwaysAwakeActionBusy || v2ConfigSaveBusy) return;
+  if (alwaysAwakeActionBusy || v2ConfigSaveBusy || (typeof voiceSpeechBusy !== 'undefined' && voiceSpeechBusy)) return;
+  let voicePayload = null;
+  let voiceDraftRevision;
+  const msg = document.getElementById('v2ConfigMsg');
+  try {
+    if (typeof hasVoiceSpeechDraft === 'function' && hasVoiceSpeechDraft()) {
+      voicePayload = voiceSpeechSettingsPayload();
+      voiceDraftRevision = voiceSpeechDraftRevision;
+    }
+  } catch (error) {
+    msg.textContent = '语音设置未保存：' + (error.message || '请检查输入');
+    msg.className = 'meta err';
+    setVoiceSpeechMessage('voiceSettingsStatus', msg.textContent, 'err');
+    return;
+  }
   const tools = {};
   document.querySelectorAll('[data-v2-tool]').forEach(el => { tools[el.dataset.v2Tool] = el.checked; });
   const body = {
@@ -4305,10 +4340,24 @@ async function saveV2Config() {
   controls.forEach(control => { control.disabled = true; });
   try {
     const r = await api('/api/socialV2/config', 'POST', body);
-    const msg = document.getElementById('v2ConfigMsg');
     msg.textContent = r.ok ? '✅ 已保存' : ('❌ ' + (r.error || '失败'));
     msg.className = r.ok ? 'meta ok' : 'meta err';
-    if (r.ok) await loadV2Config();
+    if (r.ok) {
+      // Consent stays on the narrow operator endpoint, never inside a stale full-config payload.
+      if (voicePayload) {
+        const saved = await saveVoiceSpeechSettings({ payload: voicePayload, draftRevision: voiceDraftRevision, fromV2: true });
+        if (!saved) {
+          msg.textContent = '二代参数已保存，但语音设置未确认；请查看语音区域的提示后重试。';
+          msg.className = 'meta err';
+          return;
+        }
+        msg.textContent = '二代及语音参数已保存；随机概率 ' + voicePayload.tts.randomReplyProbability + '%';
+      }
+      await loadV2Config();
+    }
+  } catch (error) {
+    msg.textContent = '保存未确认：' + (error.message || '连接失败，请重试');
+    msg.className = 'meta err';
   } finally {
     v2ConfigSaveBusy = false;
     controls.forEach((control, index) => { control.disabled = previouslyDisabled[index]; });
