@@ -177,6 +177,7 @@
         "onlineConsent": false,
         "provider": "edge",
         "voice": "zh-CN-XiaoxiaoNeural",
+        "randomReplyProbability": 0,
         "rate": 0,
         "maxChars": 300,
         "timeoutMs": 45000,

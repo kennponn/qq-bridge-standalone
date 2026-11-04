@@ -188,7 +188,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     drainAllPromptQueues,
     voiceCfg, voiceLibrary, resolveVoicePathForV2, resolveVoicePathForOperator,
     voiceBudgetCheck, sendVoiceV2, sendVoiceForV2, assertOutboundAuditOk,
-    speakText, speechService, assertSpeechTextSafe, speechSendLanes, voiceSendTimes,
+    speakText, sendReplyMessagesV2, speechService, assertSpeechTextSafe, speechSendLanes, voiceSendTimes,
     setMode(value) { currentMode = value; },
     setReady(value) { dshReady = value; },
     setPresets(value) { dshPresetIds = value; dshDefaultPreset = 'standard'; },

@@ -36,6 +36,17 @@ function registerSpeech(config, reply = { ok: true, verified: true }) {
 }
 const enabledConfig = () => ({ socialV2: { voice: { enabled: true, tts: { enabled: true, onlineConsent: true } }, tools: { sendVoice: true } } });
 
+test('text tools budget for random synthesis and guide the model not to duplicate unverified speech', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'src/mcp-snowluma-safe.js'), 'utf8');
+  for (const endpoint of ['/api/send/group', '/api/send/private']) {
+    const start = source.indexOf(`agentApi('${endpoint}', {`);
+    const block = source.slice(start, source.indexOf('\n      });', start));
+    assert.match(block, /timeoutMs: 90000/);
+  }
+  const start = source.indexOf("  'qq_send_message',");
+  assert.match(source.slice(start, source.indexOf('\n  {', start)), /delivery\/verified/);
+});
+
 test('speech tool registration requires explicit enablement and online consent', () => {
   const cases = [{}, { socialV2: {} }, ...['voice', 'tool', 'tts', 'consent'].map(field => {
     const cfg = enabledConfig();

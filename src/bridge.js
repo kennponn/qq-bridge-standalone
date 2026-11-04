@@ -25,7 +25,7 @@ import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { normalizeConversationMemory, rememberConversationMessage, formatConversationMemory, removeConversationMemory, upsertConversationFact, retainMessageText } from './conversation-memory.js';
 import { createIncomingVoiceProcessor, hasIncomingVoice, renderIncomingVoice } from './voice-incoming.js';
-import { createSpeechService, mergeVoiceSettings, resolveVoiceSettings, SPEECH_VOICES } from './voice-speech.js';
+import { createSpeechService, mergeVoiceSettings, resolveVoiceSettings, randomVoiceReplyText, SPEECH_VOICES } from './voice-speech.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { normalizeImageForModel } from './media-normalize.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
@@ -1605,7 +1605,7 @@ async function main() {
     return promise.finally(() => { if (speechSendLanes.get(key) === promise) speechSendLanes.delete(key); });
   }
 
-  async function speakText(key, body, { agent = false, token = '', signal } = {}) {
+  async function speakText(key, body, { agent = false, token = '', signal, onSendAttempt, assertAdditionalAllowed } = {}) {
     const target = parseTargetKey(key);
     if (!target) throw Object.assign(new Error('目标格式应为 group:群号 或 private:QQ号'), { statusCode: 400 });
     const epoch = sessionEpoch;
@@ -1613,10 +1613,11 @@ async function main() {
     const sendGuard = captureSendGuard(key);
     const assertAllowed = () => {
       const settings = resolveVoiceSettings(cfg.socialV2?.voice);
-      if (!settings.enabled || !settings.tts.enabled || !settings.tts.onlineConsent) throw Object.assign(new Error('语音已关闭或尚未同意在线语音服务'), { statusCode: 403 });
+      if ((agent && !settings.enabled) || !settings.tts.enabled || !settings.tts.onlineConsent) throw Object.assign(new Error('语音已关闭或尚未同意在线语音服务'), { statusCode: 403 });
       if (!isSessionAllowedInCurrentMode(key) || epoch !== sessionEpoch || currentPersonaSnapshot().stamp !== persona) throw Object.assign(new Error('语音已取消：会话、模式、白名单或人设已变化'), { statusCode: 409 });
       if (agent && (currentMode !== 'reserved2' || !agentTokenOk(key, token) || socialV2.paused || cfg.socialV2?.enabled === false || !v2ToolEnabled('sendVoice') || shouldBlockSilentReply(key))) throw Object.assign(new Error('当前不允许 AI 发送语音'), { statusCode: 403 });
       if (signal?.aborted) throw Object.assign(new Error('语音请求已取消'), { statusCode: 409 });
+      assertAdditionalAllowed?.();
       sendGuard();
     };
     return serializeSpeechSend(key, async () => {
@@ -1632,7 +1633,7 @@ async function main() {
         assertAllowed();
         await assertGroupSendAllowedV2(key);
         voiceBudgetCheck(key, voiceCfg());
-        const sent = await sendVoiceV2(key, selected.file, { guard: true, audit: true, signal,
+        const sent = await sendVoiceV2(key, selected.file, { guard: true, audit: true, signal, onSendAttempt,
           validate: () => { assertAllowed(); voiceBudgetCheck(key, voiceCfg()); } });
         voiceBudgetCommit(key);
         // An accepted old send remains accepted, but cannot resurrect a reset chat.
@@ -1832,7 +1833,7 @@ async function main() {
    * audio 可传音量设置 { volume, normalize, loudness }：SnowLuma 的 record 段没有增益字段，
    * 所以音量必须在本地用 ffmpeg 调好再发（临时文件发完即删）。
    */
-  async function sendVoiceV2(key, filePath, { guard = false, audit = true, audio = null, validate = null, signal = null } = {}) {
+  async function sendVoiceV2(key, filePath, { guard = false, audit = true, audio = null, validate = null, signal = null, onSendAttempt } = {}) {
     const assertSendAllowed = guard ? captureSendGuard(key) : null;
     const metrics = captureDirectSendMetrics(key);
     return outboundScheduler.enqueue(key, async ({ send }) => {
@@ -1877,6 +1878,7 @@ async function main() {
         const params = kind === 'private'
           ? { user_id: Number(id), message: [recordSegment] }
           : { group_id: Number(id), message: [recordSegment] };
+        onSendAttempt?.();
         const res = await fetch(`${httpUrl}/${action}`, {
           method: 'POST',
           headers: {
@@ -1938,6 +1940,9 @@ async function main() {
     st.lastAiReplyAt = entry.at;
     st.lastActionAt = entry.at;
     st.wakeConfig.noActionCount = 0;
+    st.preSleepWaitSatisfiedAt = 0;
+    st.preSleepWaitObservedAt = 0;
+    st.preSleepWaitAccumMs = 0;
     saveSocialV2State();
   }
 
@@ -5614,7 +5619,7 @@ async function main() {
             for (let i = 0; i < messages.length; i++) st.sendTimes.push(now);
             if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
             const delays = computeGapsV2(messages, 'auto', undefined, undefined, sendCfg);
-            const sentMessages = await sendMessagesV2(key, messages, delays);
+            const sentMessages = await sendReplyMessagesV2(key, messages, delays, null, null, { token: req.headers['x-agent-token'], tool: 'sendBurst', response: res });
             recordSentMessagesV2(key, sentMessages);
             st.lastAiReplyAt = now;
             st.lastActionAt = now;
@@ -5626,7 +5631,7 @@ async function main() {
             const burstHint = messages.length >= 3 ? '你已经连发了多条，确认是必要的吗？真人很少一口气补完。' : undefined;
             const spaceWarn = findCjkSpaceWarning(messages);
             const splitWarn = findSplitBoundaryWarning(messages);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, ...(sentMessages.voice ? { delivery: 'voice', verified: sentMessages.voice.verified, messageId: sentMessages.voice.messageId, hint: '本条已改用语音提交；不要补发重复文字或自动重试未确认消息。' } : {}), ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -5763,7 +5768,7 @@ async function main() {
             actualReplyToMessageId = resolved.messageId;
           }
           try {
-            const sentMessages = await sendMessagesV2(key, messages, delays, actualReplyToMessageId, atUserId);
+            const sentMessages = await sendReplyMessagesV2(key, messages, delays, actualReplyToMessageId, atUserId, { token: req.headers['x-agent-token'], tool: 'sendMessage', response: res });
             recordSentMessagesV2(key, sentMessages);
             st.lastAiReplyAt = now;
             st.lastActionAt = now;
@@ -5775,7 +5780,7 @@ async function main() {
             const burstHint = messages.length >= 3 ? '你已经连发了多条，确认是必要的吗？真人很少一口气补完。' : undefined;
             const spaceWarn = findCjkSpaceWarning(messages);
             const splitWarn = findSplitBoundaryWarning(messages);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, delays, quoted: quotedInfo, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, delays, quoted: quotedInfo, ...(sentMessages.voice ? { delivery: 'voice', verified: sentMessages.voice.verified, messageId: sentMessages.voice.messageId, hint: '本条已改用语音提交；不要补发重复文字或自动重试未确认消息。' } : {}), ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -6117,15 +6122,16 @@ async function main() {
             const configFile = path.join(ROOT, 'config.json');
             const file = readConfigObject(configFile);
             const voice = mergeVoiceSettings(cfg.socialV2.voice, body);
+            const sendVoice = body.enabled !== undefined ? body.enabled : body.tts?.enabled;
             file.socialV2 = { ...(file.socialV2 ?? {}), voice,
-              tools: { ...(file.socialV2?.tools ?? cfg.socialV2.tools), ...(body.tts?.enabled !== undefined ? { sendVoice: body.tts.enabled === true } : {}) } };
-            if (body.tts?.enabled === true) voice.enabled = true;
+              tools: { ...(file.socialV2?.tools ?? cfg.socialV2.tools), ...(sendVoice !== undefined ? { sendVoice: sendVoice === true } : {}) } };
+            if (body.enabled === undefined && body.tts?.enabled === true) voice.enabled = true;
             atomicWriteJson(configFile, file);
             cfg.socialV2.voice = voice;
-            if (body.tts?.enabled !== undefined) cfg.socialV2.tools.sendVoice = body.tts.enabled === true;
+            if (sendVoice !== undefined) cfg.socialV2.tools.sendVoice = sendVoice === true;
             speechService.invalidate();
           }
-          sendJson({ ok: true, config: resolveVoiceSettings(cfg.socialV2.voice), status: await speechService.health(), voices: SPEECH_VOICES });
+          sendJson({ ok: true, config: resolveVoiceSettings(cfg.socialV2.voice), aiSendEnabled: cfg.socialV2.voice.enabled === true && v2ToolEnabled('sendVoice'), status: await speechService.health(), voices: SPEECH_VOICES });
           return;
         }
         if (req.method === 'GET' && url.pathname.startsWith('/api/voice/preview/')) {
@@ -7606,7 +7612,7 @@ async function main() {
             }
             st.sendTimes.push(now);
             if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
-            const sentMessages = await sendMessagesV2(key, [message], [], actualReplyToMessageId, atUserId);
+            const sentMessages = await sendReplyMessagesV2(key, [message], [], actualReplyToMessageId, atUserId, { token, tool: flag, response: res });
             recordSentMessagesV2(key, sentMessages);
             st.lastAiReplyAt = now;
             st.lastActionAt = now;
@@ -7615,7 +7621,7 @@ async function main() {
             log(`[send] ${url.pathname} ${key}: 成功 ${sentMessages.length}/1 条`);
             appendActivity(`${key} [send] 成功 ${sentMessages.length}/1 条：${message.slice(0, 80)}`);
             if (sentMessages.length > 0) scheduleReplyCheckV2(key);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: sentMessages.length ? 0 : 1, quoted: quotedInfo });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: sentMessages.length ? 0 : 1, quoted: quotedInfo, ...(sentMessages.voice ? { delivery: 'voice', verified: sentMessages.voice.verified, messageId: sentMessages.voice.messageId, hint: '本条已改用语音提交；不要补发重复文字或自动重试未确认消息。' } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -8060,12 +8066,7 @@ async function main() {
       if (!/^\d+$/.test(at)) throw new Error('atUserId 必须是正整数 QQ 号，且不能为 all');
       segments.push({ type: 'at', data: { qq: at } });
     }
-    const rawMessage = String(message ?? '');
-    // 强制过滤掉所有括号内的内心对白、动作描写、OS（如 （...） 或 (...)）
-    const cleanMessage = rawMessage
-      .replace(/[（\(][^）\)]*[）\)]/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    const cleanMessage = cleanOnebotMessage(message);
     const hasKnownToken = [...KNOWN_AGENT_TOKENS].some((t) => t && cleanMessage.includes(t));
     if (hasKnownToken) {
       log(`发送内容包含会话令牌，已阻止发送 (${kind}:${id})`);
@@ -8600,7 +8601,60 @@ async function main() {
     return delays;
   }
 
-  function sendMessagesV2(key, messages, delays, replyToMessageId, atUserId = null) {
+  function cleanOnebotMessage(message) {
+    // Text and random speech share the existing filter for stage directions/inner monologues.
+    return String(message ?? '').replace(/[（\(][^）\)]*[）\)]/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  async function sendReplyMessagesV2(key, messages, delays, replyToMessageId, atUserId, { token = '', tool, response } = {}) {
+    const candidate = currentMode === 'reserved2' && token ? randomVoiceReplyText(messages, cfg.socialV2?.voice, {
+      toolEnabled: v2ToolEnabled('sendVoice'), replyToMessageId, atUserId
+    }) : null;
+    const text = candidate === null ? null : cleanOnebotMessage(candidate) || null;
+    if (text === null) return sendMessagesV2(key, messages, delays, replyToMessageId, atUserId);
+    const epoch = sessionEpoch;
+    const guard = captureSendGuard(key);
+    const probability = resolveVoiceSettings(cfg.socialV2?.voice).tts.randomReplyProbability;
+    const controller = new AbortController();
+    const onClose = () => { if (!response.writableEnded) controller.abort(); };
+    response?.on('close', onClose);
+    const deadline = setTimeout(() => controller.abort(), 80000);
+    let attempted = false;
+    const validate = () => {
+      guard();
+      if (controller.signal.aborted || epoch !== sessionEpoch || !agentTokenOk(key, token) || socialV2.paused
+          || cfg.socialV2?.enabled === false || shouldBlockSilentReply(key) || !v2ToolEnabled(tool)) {
+        throw Object.assign(new Error('随机语音回复已取消：会话或发送权限已变化'), { statusCode: 409 });
+      }
+    };
+    const validateVoice = () => {
+      validate();
+      const settings = resolveVoiceSettings(cfg.socialV2?.voice);
+      if (!settings.enabled || !settings.tts.enabled || !settings.tts.onlineConsent || !v2ToolEnabled('sendVoice')
+          || settings.tts.randomReplyProbability !== probability) {
+        throw Object.assign(new Error('随机语音回复已取消：概率设置已变化'), { statusCode: 409 });
+      }
+    };
+    try {
+      validate();
+      const result = await speakText(key, { text }, { agent: true, token, signal: controller.signal,
+        onSendAttempt: () => { attempted = true; }, assertAdditionalAllowed: validateVoice });
+      log(`[voice] ${key} 随机语音回复已提交（${probability}%），送达${result.verified ? '已确认' : '未确认'}`);
+      return Object.assign([text], { voice: result });
+    } catch (error) {
+      // A timeout/failed acknowledgement after dispatch is not safe to retry as text.
+      if (attempted) throw Object.assign(new Error('随机语音已尝试提交，但送达未确认；请查看 QQ，不要自动补发或重试'), { statusCode: 502 });
+      if (controller.signal.aborted || error?.statusCode === 403 || error?.statusCode === 409) throw error;
+      validateVoice();
+      log(`[voice] ${key} 随机语音未提交，改用原文字回复`);
+      return await sendMessagesV2(key, messages, delays, replyToMessageId, atUserId, validate);
+    } finally {
+      clearTimeout(deadline);
+      response?.removeListener('close', onClose);
+    }
+  }
+
+  function sendMessagesV2(key, messages, delays, replyToMessageId, atUserId = null, validate = null) {
     const assertSendAllowed = captureSendGuard(key);
     const metrics = captureDirectSendMetrics(key);
     const [kind, id] = key.split(':');
@@ -8615,6 +8669,7 @@ async function main() {
           await send(async () => {
             await assertGroupSendAllowedV2(key);
             assertSendAllowed();
+            validate?.();
             await onebotSend(kind, id, msg, useReply, useAt);
             metrics.ack();
             sent.push(msg);
@@ -10845,6 +10900,7 @@ async function main() {
   }
 
   function recordSentMessagesV2(key, messages) {
+    if (messages?.voice) return; // speakText already records the accepted voice, including its message ID.
     const st = getSocialV2State(key);
     const now = Date.now();
     const list = Array.isArray(messages) ? messages : [];

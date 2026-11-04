@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const tests = process.argv.includes('--voice') ? [
-  'test-voice-incoming.mjs', 'test-voice-speech.mjs', 'test-voice-tools.mjs', 'test-voice-bridge.mjs',
+  'test-voice-incoming.mjs', 'test-voice-speech.mjs', 'test-voice-tools.mjs', 'test-voice-bridge.mjs', 'test-random-voice-ui.mjs',
 ] : [
   'test-release-docs.mjs',
   'test-standalone.mjs', 'test-engine-settings.mjs', 'test-engine-console-ui.mjs',

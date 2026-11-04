@@ -26,6 +26,7 @@ export function resolveVoiceSettings(value = {}) {
     tts: {
       enabled: t.enabled === true, onlineConsent: t.onlineConsent === true, provider: 'edge',
       voice: VOICE_IDS.has(t.voice) ? t.voice : 'zh-CN-XiaoxiaoNeural', rate: bounded(t.rate, 0, -50, 50),
+      randomReplyProbability: typeof t.randomReplyProbability === 'number' ? bounded(t.randomReplyProbability, 0, 0, 100) : 0,
       maxChars: bounded(t.maxChars, 300, 20, 300), timeoutMs: bounded(t.timeoutMs, 45000, 5000, 60000),
       maxSeconds: bounded(t.maxSeconds, 90, 5, 90)
     }
@@ -42,20 +43,32 @@ export function mergeVoiceSettings(current, patch) {
     if (typeof patch.enabled !== 'boolean') throw error('enabled 必须是布尔值');
     next.enabled = patch.enabled;
   }
-  for (const [key, fields] of Object.entries({ incoming: ['enabled', 'timeoutMs', 'maxChars'], tts: ['enabled', 'onlineConsent', 'voice', 'rate', 'maxChars', 'timeoutMs', 'maxSeconds'] })) {
+  for (const [key, fields] of Object.entries({ incoming: ['enabled', 'timeoutMs', 'maxChars'], tts: ['enabled', 'onlineConsent', 'voice', 'rate', 'randomReplyProbability', 'maxChars', 'timeoutMs', 'maxSeconds'] })) {
     if (patch[key] === undefined) continue;
     if (!object(patch[key]) || Object.keys(patch[key]).some(k => !fields.includes(k))) throw error(`${key} 设置无效`);
     next[key] = { ...(object(current?.[key]) ? current[key] : {}), ...patch[key] };
     for (const bool of ['enabled', 'onlineConsent']) {
       if (patch[key][bool] !== undefined && typeof patch[key][bool] !== 'boolean') throw error(`${key}.${bool} 必须是布尔值`);
     }
-    for (const [field, min, max] of key === 'incoming' ? [['timeoutMs', 1000, 30000], ['maxChars', 100, 4000]] : [['rate', -50, 50], ['maxChars', 20, 300], ['timeoutMs', 5000, 60000], ['maxSeconds', 5, 90]]) {
+    for (const [field, min, max] of key === 'incoming' ? [['timeoutMs', 1000, 30000], ['maxChars', 100, 4000]] : [['rate', -50, 50], ['randomReplyProbability', 0, 100], ['maxChars', 20, 300], ['timeoutMs', 5000, 60000], ['maxSeconds', 5, 90]]) {
       const value = patch[key][field];
       if (value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)) throw error(`${key}.${field} 超出允许范围`);
     }
   }
   if (patch.tts?.voice !== undefined && !VOICE_IDS.has(patch.tts.voice)) throw error('请选择列表中的女声');
   return { ...next, ...resolveVoiceSettings(next) };
+}
+
+export function randomVoiceReplyText(messages, value, { toolEnabled = false, replyToMessageId, atUserId, random = Math.random } = {}) {
+  const settings = resolveVoiceSettings(value);
+  const tts = settings.tts;
+  if (!settings.enabled || !toolEnabled || !tts.enabled || !tts.onlineConsent || tts.randomReplyProbability === 0) return null;
+  if (!Array.isArray(messages) || messages.length !== 1 || (replyToMessageId != null && String(replyToMessageId).trim()) || atUserId) return null;
+  let text;
+  try { text = validateSpeechText(messages[0], tts.maxChars); } catch { return null; }
+  // Keep rich content and copyable links/code as text; never read CQ instructions aloud.
+  if (/\[CQ:|https?:\/\/|www\.|```|`|!\[|\[[^\]]*\]\(/i.test(text)) return null;
+  return random() < tts.randomReplyProbability / 100 ? text : null;
 }
 
 export function validateSpeechText(value, maxChars = 300) {

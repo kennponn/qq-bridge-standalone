@@ -521,6 +521,7 @@ server.tool(
       const cleanMessage = unquoteJsonString(message);
       const data = await agentApi('/api/send/group', {
         method: 'POST',
+        timeoutMs: 90000, // A short text reply may use the operator's random TTS policy.
         // token 既放 body（兼容旧调用）又放 header：桥接的「agent 流量」判定基于 header，
         // 只带 body 会让这条请求在桥接眼里像控制台请求，绕过 agent 专用的闸门与审计。
         ...(token ? { headers: { 'x-agent-token': token } } : {}),
@@ -571,6 +572,7 @@ server.tool(
       const cleanMessage = unquoteJsonString(message);
       const data = await agentApi('/api/send/private', {
         method: 'POST',
+        timeoutMs: 90000,
         ...(token ? { headers: { 'x-agent-token': token } } : {}),
         body: JSON.stringify({ userId: String(userId), message: cleanMessage, replyToMessageId, token: token || undefined })
       });
@@ -745,7 +747,7 @@ server.tool(
 
 server.tool(
   'qq_send_message',
-  '统一发送工具：可发一条或多条，可引用某条消息，可自定义/按字数计算条间时间差。二代仿真模式专用。注意：字符串=一条消息，数组=多条消息；每个字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。只有以下情况才需要传 replyToMessageId 引用：① 你这条消息指向的人或消息并非最新一条别人的消息（也就是你在回更早的某条）；② 你连续几句话里不同消息指代的是不同的消息或不同的人。其他情况（上下文唯一、刚在接同一条最新消息）不要引用，别让对方猜，也别为了用工具而用。',
+  '统一发送工具：可发一条或多条，可引用某条消息，可自定义/按字数计算条间时间差。二代仿真模式专用。注意：字符串=一条消息，数组=多条消息；每个字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。只有以下情况才需要传 replyToMessageId 引用：① 你这条消息指向的人或消息并非最新一条别人的消息（也就是你在回更早的某条）；② 你连续几句话里不同消息指代的是不同的消息或不同的人。其他情况（上下文唯一、刚在接同一条最新消息）不要引用，别让对方猜，也别为了用工具而用。管理员启用随机语音时，宿主可能将短文字改发语音，以返回的 delivery/verified 为准；不要补发重复文字或自动重试未确认消息。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),

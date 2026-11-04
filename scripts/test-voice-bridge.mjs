@@ -73,7 +73,8 @@ async function withServer(f, run) {
   try { await run(server.address().port); } finally { await new Promise(resolve => server.close(resolve)); }
 }
 function agentHeaders(h, key = 'group:456') { return { ...ADMIN, 'x-agent-call': '1', 'x-agent-token': h.getSocialV2State(key).agentToken }; }
-function recordRequests(h) { return h.calls.http.filter(request => /send_(private|group)_msg$/.test(request.url)); }
+function recordRequests(h) { return h.calls.http.filter(request => /send_(private|group)_msg$/.test(request.url) && request.body?.message?.some(segment => segment.type === 'record')); }
+function textRequests(h) { return h.calls.http.filter(request => /send_(private|group)_msg$/.test(request.url) && request.body?.message?.some(segment => segment.type === 'text')); }
 
 test('narrow settings preserve model/persona/other config and enable voice/tool without generation', async () => {
   const f = await fixture({ config: { engine: { backend: 'standalone', directLLM: { provider: 'openai-compatible', model: 'fixture-model', baseUrl: 'https://fixture.invalid/v1', apiKeyEnv: 'QQ_DIRECT_API_KEY' } }, extraFixture: { preserve: 1 }, socialV2: { voice: { enabled: false, tts: { enabled: false, onlineConsent: false } }, tools: { sendVoice: false, memory: true } } } });
@@ -104,12 +105,197 @@ test('malformed mixed settings reject atomically before file or runtime changes'
   const f = await fixture();
   try { await withServer(f, async port => {
     const file = path.join(f.h.temp, 'config.json'); const before = fs.readFileSync(file); const cfgBefore = clone(f.h.cfg.socialV2.voice);
-    for (const body of [{ tts: { enabled: 'true', onlineConsent: true } }, { incoming: { enabled: false }, tts: { onlineConsent: 1 } }, { tts: { voice: 'arbitrary' } }, { tts: { rate: 51 } }, { tts: { rate: 0.1 } }, { tts: { provider: 'other' } }, { unknown: true }, { incoming: null }, { tts: [] }]) {
+    for (const body of [{ tts: { enabled: 'true', onlineConsent: true } }, { incoming: { enabled: false }, tts: { onlineConsent: 1 } }, { tts: { voice: 'arbitrary' } }, { tts: { rate: 51 } }, { tts: { rate: 0.1 } }, { tts: { provider: 'other' } }, { unknown: true }, { incoming: null }, { tts: [] }, ...[-1, 101, 0.5, '20', null, true].map(value => ({ enabled: true, tts: { randomReplyProbability: value } }))]) {
       const result = await call(port, '/api/voice/settings', { method: 'POST', body });
       assert.equal(result.status, 400, JSON.stringify(body)); assert.ok(before.equals(fs.readFileSync(file))); assert.deepEqual(clone(f.h.cfg.socialV2.voice), cfgBefore);
     }
     assert.equal(f.calls.invalidations, 0); assert.equal(f.calls.synth.length, 0);
   }); } finally { await f.close(); }
+});
+
+test('AI voice permission and probability save independently without disabling operator TTS', async () => {
+  const f = await fixture();
+  try { await withServer(f, async port => {
+    const disabled = await call(port, '/api/voice/settings', { method: 'POST', body: { enabled: false, tts: { enabled: true, onlineConsent: true, randomReplyProbability: 20 } } });
+    assert.equal(disabled.status, 200); assert.equal(disabled.json.aiSendEnabled, false);
+    assert.equal(disabled.json.config.tts.randomReplyProbability, 20);
+    assert.equal(disabled.json.status.ttsReady, true); assert.equal(f.h.cfg.socialV2.tools.sendVoice, false);
+    await f.h.speakText('private:123', { text: 'manual speech still allowed' });
+    assert.equal(recordRequests(f.h).length, 1);
+    const enabled = await call(port, '/api/voice/settings', { method: 'POST', body: { enabled: true, tts: { randomReplyProbability: 100 } } });
+    assert.equal(enabled.json.aiSendEnabled, true); assert.equal(f.h.cfg.socialV2.tools.sendVoice, true);
+    const persisted = JSON.parse(fs.readFileSync(path.join(f.h.temp, 'config.json')));
+    assert.equal(persisted.socialV2.voice.tts.randomReplyProbability, 100);
+    const off = await call(port, '/api/voice/settings', { method: 'POST', body: { tts: { randomReplyProbability: 0 } } });
+    assert.equal(off.json.config.tts.randomReplyProbability, 0); assert.equal(off.json.aiSendEnabled, true);
+  }); } finally { await f.close(); }
+});
+
+const randomConfig = probability => ({ socialV2: { tools: { sendVoice: true }, voice: { ...clone(voice), tts: { ...voice.tts, randomReplyProbability: probability } } } });
+
+test('100% converts group/private normal text endpoints to one verified voice with one context entry', async () => {
+  for (const endpoint of ['/api/socialV2/send-message', '/api/socialV2/send-burst', '/api/send/group', '/api/send/private']) {
+    const f = await fixture({ config: randomConfig(100) });
+    try { await withServer(f, async port => {
+      const key = endpoint.endsWith('/private') ? 'private:123' : 'group:456';
+      const token = f.h.getSocialV2State(key).agentToken;
+      const body = endpoint.startsWith('/api/socialV2/') ? { key, messages: 'random short reply' }
+        : { groupId: '456', userId: '123', token, message: 'random short reply' };
+      const result = await call(port, endpoint, { method: 'POST', headers: agentHeaders(f.h, key), body });
+      assert.equal(result.status, 200, endpoint); assert.equal(result.json.delivery, 'voice');
+      assert.equal(result.json.verified, true); assert.equal(result.json.sent, 1); assert.equal(result.json.failed, 0);
+      assert.match(result.json.hint, /不要补发/);
+      assert.equal(recordRequests(f.h).length, 1); assert.equal(recordRequests(f.h)[0].body.message[0].type, 'record');
+      assert.equal(f.h.calls.sent.length, 0, 'No duplicate text.'); assert.equal(f.calls.synth.length, 1);
+      assert.equal(textRequests(f.h).length, 0, 'No duplicate HTTP text.');
+      const recent = f.h.getSocialV2State(key).recentMessages;
+      assert.equal(recent.length, 1); assert.equal(recent[0].text, 'random short reply'); assert.ok(recent[0].messageId);
+      assert.equal(f.h.getSocialV2State(key).sendTimes.length, 1); assert.equal(f.h.voiceSendTimes.get(key).length, 1);
+    }); } finally { await f.close(); }
+  }
+});
+
+test('zero probability/disabled voice/long text/@/links/bursts stay text without generation', async () => {
+  for (const kind of ['zero', 'tool', 'voice', 'consent', 'tts', 'long', 'at', 'url', 'burst']) {
+    const f = await fixture({ config: randomConfig(kind === 'zero' ? 0 : 100) });
+    try { await withServer(f, async port => {
+      if (kind === 'tool') f.h.cfg.socialV2.tools.sendVoice = false;
+      if (kind === 'voice') f.h.cfg.socialV2.voice.enabled = false;
+      if (kind === 'consent') f.h.cfg.socialV2.voice.tts.onlineConsent = false;
+      if (kind === 'tts') f.h.cfg.socialV2.voice.tts.enabled = false;
+      const messages = kind === 'long' ? 'x'.repeat(301) : kind === 'url' ? 'https://example.test' : kind === 'burst' ? ['first', 'second'] : 'text reply';
+      const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages, gapMode: 'fixed', gapMs: 100, ...(kind === 'at' ? { atUserId: '111' } : {}) } });
+      assert.equal(result.status, 200, kind); assert.equal(result.json.delivery, undefined);
+      assert.equal(f.calls.synth.length, 0, kind); assert.equal(recordRequests(f.h).length, 0, kind);
+      assert.equal(textRequests(f.h).length, kind === 'burst' ? 2 : 1);
+      assert.equal(f.h.getSocialV2State('group:456').recentMessages.length, kind === 'burst' ? 2 : 1);
+    }); } finally { await f.close(); }
+  }
+});
+
+test('synthesis failure before dispatch falls back once to original text, with no private error logs', async () => {
+  const f = await fixture({ config: randomConfig(100), hook: async () => { throw new Error('FIXTURE-PRIVATE-TTS-FAILURE'); } });
+  try { await withServer(f, async port => {
+    const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: 'fallback reply' } });
+    assert.equal(result.status, 200); assert.equal(result.json.sent, 1); assert.equal(result.json.delivery, undefined);
+    assert.equal(textRequests(f.h).length, 1); assert.equal(textRequests(f.h)[0].body.message[0].data.text, 'fallback reply');
+    assert.equal(recordRequests(f.h).length, 0); assert.equal(f.h.voiceSendTimes.size, 0);
+    assert.equal(f.h.getSocialV2State('group:456').recentMessages.length, 1);
+    assert.ok(!fs.readFileSync(path.join(f.h.temp, 'state/bridge.log'), 'utf8').includes('FIXTURE-PRIVATE-TTS-FAILURE'));
+  }); } finally { await f.close(); }
+});
+
+test('random speech uses the same stage-direction filter as outgoing text', async () => {
+  const f = await fixture({ config: randomConfig(100) });
+  try { await withServer(f, async port => {
+    const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: '(quietly) hello (private thoughts)' } });
+    assert.equal(result.status, 200); assert.equal(result.json.delivery, 'voice');
+    assert.equal(f.calls.synth[0].text, 'hello');
+    assert.equal(f.h.getSocialV2State('group:456').recentMessages[0].text, 'hello');
+  }); } finally { await f.close(); }
+});
+
+test('quotes and administrator/closed-agent text sends are never converted', async () => {
+  const f = await fixture({ config: randomConfig(100) });
+  try {
+    const token = f.h.getSocialV2State('group:456').agentToken;
+    const sent = await f.h.sendReplyMessagesV2('group:456', ['quoted reply'], [], '9001', null, { token, tool: 'sendMessage' });
+    assert.equal(sent.voice, undefined); assert.equal(f.calls.synth.length, 0);
+    assert.equal(textRequests(f.h)[0].body.message[0].type, 'reply');
+    await f.h.sendReplyMessagesV2('group:456', ['operator reply'], [], null, null, {});
+    f.h.setMode('closed-agent');
+    await f.h.sendReplyMessagesV2('private:123', ['owner reply'], [], null, null, { token: f.h.getSocialV2State('private:123').agentToken, tool: 'sendPrivate' });
+    assert.equal(f.calls.synth.length, 0); assert.equal(recordRequests(f.h).length, 0);
+    assert.equal(textRequests(f.h).length, 3);
+  } finally { await f.close(); }
+});
+
+test('random conversion refuses forbidden text permissions, muted groups and sensitive speech before synthesis', async () => {
+  for (const kind of ['token', 'pause', 'v2', 'textTool', 'ban', 'credential']) {
+    const f = await fixture({ config: randomConfig(100) });
+    try {
+      const key = 'group:456'; const token = f.h.getSocialV2State(key).agentToken;
+      if (kind === 'pause') f.h.socialV2.paused = true;
+      if (kind === 'v2') f.h.cfg.socialV2.enabled = false;
+      if (kind === 'textTool') f.h.cfg.socialV2.tools.sendMessage = false;
+      if (kind === 'ban') { f.h.setSelfIdentity('fixture bot', '789'); f.h.observeGroupBanV2({ group_id: 456, user_id: 789, duration: 3600, sub_type: 'ban', notice_type: 'group_ban' }); }
+      await assert.rejects(f.h.sendReplyMessagesV2(key, [kind === 'credential' ? 'fixture-console-token' : 'forbidden reply'], [], null, null, { token: kind === 'token' ? 'invalid' : token, tool: 'sendMessage' }));
+      assert.equal(f.calls.synth.length, 0, kind); assert.equal(recordRequests(f.h).length, 0, kind); assert.equal(textRequests(f.h).length, 0, kind);
+    } finally { await f.close(); }
+  }
+});
+
+test('disconnecting a random text reply aborts synthesis without fallback or a QQ send', async () => {
+  const started = deferred(), cancelled = deferred();
+  const f = await fixture({ config: randomConfig(100), hook: options => new Promise(resolve => {
+    started.resolve(); options.signal.addEventListener('abort', () => { cancelled.resolve(); resolve(); }, { once: true });
+  }) });
+  try { await withServer(f, async port => {
+    const req = http.request({ host: '127.0.0.1', port, path: '/api/socialV2/send-message', method: 'POST', headers: { ...agentHeaders(f.h), 'content-type': 'application/json' } });
+    req.on('error', () => {}); req.end(JSON.stringify({ key: 'group:456', messages: 'disconnect random reply' }));
+    await started.promise; req.destroy();
+    await Promise.race([cancelled.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('random reply cancellation not observed')), 1500))]);
+    await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(recordRequests(f.h).length, 0); assert.equal(textRequests(f.h).length, 0);
+  }); } finally { await f.close(); }
+});
+
+test('exhausted voice budget keeps ordinary text available without another synthesis', async () => {
+  const f = await fixture({ config: randomConfig(100) });
+  try {
+    f.h.cfg.socialV2.voice.maxPerMinute = 1;
+    await f.h.speakText('group:456', { text: 'first voice' });
+    await withServer(f, async port => {
+      const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: 'limited voice becomes text' } });
+      assert.equal(result.status, 200); assert.equal(result.json.delivery, undefined); assert.equal(f.calls.synth.length, 1);
+      assert.equal(recordRequests(f.h).length, 1); assert.equal(textRequests(f.h).length, 1);
+    });
+  } finally { await f.close(); }
+});
+
+test('unverified success and uncertain gateway failure never trigger duplicate text', async () => {
+  for (const failed of [false, true]) {
+    let attempts = 0;
+    const f = await fixture({ config: randomConfig(100), fetchImpl: async url => {
+      if (String(url).endsWith('/send_group_msg')) {
+        attempts++;
+        if (failed) throw new Error('FIXTURE-UNCERTAIN-GATEWAY');
+        return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message: [] } }) };
+    } });
+    try { await withServer(f, async port => {
+      const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: 'possibly delivered voice' } });
+      assert.equal(attempts, 1); assert.equal(f.h.calls.sent.length, 0);
+      assert.equal(textRequests(f.h).length, 0);
+      assert.equal(result.status, failed ? 500 : 200);
+      if (failed) { assert.match(result.json.error, /不要自动补发或重试/); assert.equal(f.h.getSocialV2State('group:456').sendTimes.length, 0); }
+      else { assert.equal(result.json.delivery, 'voice'); assert.equal(result.json.verified, false); }
+      assert.ok(!result.text.includes('FIXTURE-UNCERTAIN-GATEWAY'));
+    }); } finally { await f.close(); }
+  }
+});
+
+test('permissions, probability, persona and reset changes during random synthesis cancel with no text fallback', async () => {
+  for (const kind of ['token', 'pause', 'probability', 'persona', 'epoch', 'voice', 'consent', 'textTool']) {
+    const reached = deferred(), gate = deferred();
+    const f = await fixture({ config: randomConfig(100), hook: async () => { reached.resolve(); await gate.promise; } });
+    try {
+      const token = f.h.getSocialV2State('group:456').agentToken;
+      const pending = f.h.sendReplyMessagesV2('group:456', ['pending random reply'], [], null, null, { token, tool: 'sendMessage' });
+      await reached.promise;
+      if (kind === 'token') f.h.getSocialV2State('group:456').agentToken = 'rotated-token';
+      if (kind === 'pause') f.h.socialV2.paused = true;
+      if (kind === 'probability') f.h.cfg.socialV2.voice.tts.randomReplyProbability = 0;
+      if (kind === 'persona') fs.writeFileSync(path.join(f.h.temp, 'state/current-role.json'), JSON.stringify({ role: null, mode: 'silent' }));
+      if (kind === 'epoch') f.h.resetEpoch();
+      if (kind === 'voice') f.h.cfg.socialV2.voice.enabled = false;
+      if (kind === 'consent') f.h.cfg.socialV2.voice.tts.onlineConsent = false;
+      if (kind === 'textTool') f.h.cfg.socialV2.tools.sendMessage = false;
+      gate.resolve(); await assert.rejects(pending);
+      assert.equal(recordRequests(f.h).length, 0, kind); assert.equal(f.h.calls.sent.length, 0, kind);
+    } finally { gate.resolve(); await f.close(); }
+  }
 });
 
 test('settings/preview/audio/speak administrative endpoints reject agent calls before generation', async () => {

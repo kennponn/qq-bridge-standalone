@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { createSpeechService, resolveVoiceSettings, mergeVoiceSettings, validateSpeechText, SPEECH_VOICES } from '../src/voice-speech.js';
+import { createSpeechService, resolveVoiceSettings, mergeVoiceSettings, randomVoiceReplyText, validateSpeechText, SPEECH_VOICES } from '../src/voice-speech.js';
 
 const STAGE = path.resolve(import.meta.dirname, '..');
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -47,6 +47,54 @@ async function fixture(runTest, { run, probe, audit, config = allowedConfig() } 
 }
 const cacheFiles = root => fs.existsSync(path.join(root, 'state/voice-previews'))
   ? fs.readdirSync(path.join(root, 'state/voice-previews')) : [];
+
+test('random reply percentages default off, persist zero/100 and reject malformed patches atomically', () => {
+  assert.equal(resolveVoiceSettings().tts.randomReplyProbability, 0);
+  for (const value of [-1, 101, 0.5, '20', null, true, NaN, Infinity]) {
+    assert.throws(() => mergeVoiceSettings(allowedConfig(), { tts: { randomReplyProbability: value } }));
+  }
+  for (const value of [0, 1, 20, 100]) {
+    const result = mergeVoiceSettings(allowedConfig(), { tts: { randomReplyProbability: value } });
+    assert.equal(result.tts.randomReplyProbability, value);
+    assert.equal(result.tts.voice, allowedConfig().tts.voice);
+  }
+  assert.equal(resolveVoiceSettings({ tts: { randomReplyProbability: '100' } }).tts.randomReplyProbability, 0);
+});
+
+test('random reply draws exactly once per eligible single reply with strict probability boundaries', () => {
+  const config = { ...allowedConfig(), tts: { ...allowedConfig().tts, randomReplyProbability: 20 } };
+  let draws = 0;
+  const pick = roll => randomVoiceReplyText([' hello '], config, { toolEnabled: true, random: () => { draws++; return roll; } });
+  assert.equal(pick(0), 'hello');
+  assert.equal(pick(0.199999), 'hello');
+  assert.equal(pick(0.2), null);
+  assert.equal(pick(0.99), null);
+  assert.equal(draws, 4);
+  config.tts.randomReplyProbability = 100;
+  assert.equal(pick(0.999999), 'hello');
+  config.tts.randomReplyProbability = 0;
+  assert.equal(pick(0), null);
+  assert.equal(draws, 5, 'Disabled conversion never consumes randomness.');
+});
+
+test('random reply skips disabled gates, quotes, at, bursts, links, code, CQ and overlength before drawing', () => {
+  const config = { ...allowedConfig(), tts: { ...allowedConfig().tts, randomReplyProbability: 100 } };
+  const options = { toolEnabled: true, random: () => assert.fail('Ineligible reply must not draw.') };
+  for (const messages of [[], ['a', 'b'], [''], ['x'.repeat(301)], ['[CQ:image,file=x]'], ['https://example.test'], ['www.example.test'], ['`copy me`'], ['[link](example.test)'], ['hello\x00']]) {
+    assert.equal(randomVoiceReplyText(messages, config, options), null);
+  }
+  for (const patch of [{ replyToMessageId: '123' }, { atUserId: '456' }, { toolEnabled: false }]) {
+    assert.equal(randomVoiceReplyText(['hello'], config, { ...options, ...patch }), null);
+  }
+  for (const field of ['voice', 'tts', 'consent']) {
+    const value = structuredClone(config);
+    if (field === 'voice') value.enabled = false;
+    if (field === 'tts') value.tts.enabled = false;
+    if (field === 'consent') value.tts.onlineConsent = false;
+    assert.equal(randomVoiceReplyText(['hello'], value, options), null);
+  }
+  assert.equal(randomVoiceReplyText(['🙂'.repeat(300)], config, { toolEnabled: true, random: () => 0 }), '🙂'.repeat(300));
+});
 
 test('speech defaults fail closed and normalized caps cannot grow beyond bounded limits', () => {
   const defaults = resolveVoiceSettings();

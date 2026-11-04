@@ -2202,7 +2202,7 @@ button:active:not(:disabled) {
       <div class="row" style="margin-top:10px">
         <label for="voiceTtsEnabled" style="flex:1">启用在线 Edge 女声朗读</label><input type="checkbox" id="voiceTtsEnabled" style="width:auto">
       </div>
-      <div class="meta" id="voiceOnlineDisclosure">在线朗读会把你要朗读的文字发送到 Microsoft 的在线语音服务；不是本地离线合成，无需 API key。不要朗读密码、令牌或敏感隐私。试听只在控制台生成音频，不会发送到 QQ；点击「发送语音到所选会话」才会发送。</div>
+      <div class="meta" id="voiceOnlineDisclosure">在线朗读会把你要朗读的文字发送到 Microsoft 的在线语音服务；不是本地离线合成，无需 API key。不要朗读密码、令牌或敏感隐私。试听只在控制台生成音频，不会发送到 QQ；手动发送需点击「发送语音到所选会话」。允许 AI 发语音并启用随机回复后，命中的机器人回复文本也会提交合成并发到 QQ。</div>
       <label style="display:block;margin:8px 0"><input type="checkbox" id="voiceOnlineConsent" aria-describedby="voiceOnlineDisclosure" style="width:auto"> 我同意将朗读文字发送到 Microsoft 在线语音服务</label>
       <div class="row">
         <label for="voiceTtsVoice" style="flex:0 0 auto">女声</label>
@@ -2211,6 +2211,13 @@ button:active:not(:disabled) {
         </select>
         <label for="voiceTtsRate" style="flex:0 0 auto">语速 %</label><input id="voiceTtsRate" type="number" min="-50" max="50" value="0" style="width:85px">
       </div>
+      <div class="row" style="margin-top:10px">
+        <label for="voiceAiEnabled" style="flex:1">允许 AI 发语音（含随机语音回复）</label><input type="checkbox" id="voiceAiEnabled" style="width:auto">
+      </div>
+      <div class="row" style="flex-wrap:wrap">
+        <label for="voiceRandomProbability" style="flex:1">随机语音回复概率 %</label><input id="voiceRandomProbability" type="number" min="0" max="100" step="1" value="0" aria-describedby="voiceRandomHelp" style="width:85px">
+      </div>
+      <div class="meta" id="voiceRandomHelp">0% 关闭随机转换，100% 将符合条件的回复都改成语音。二代仿真每次单条短文字回复抽一次；引用、@、链接、代码、长文本和连发多条保留文字。须允许 AI 发语音、启用在线朗读并同意服务，保存后生效；不在空闲时自行发消息。命中只发语音，不重复发文字；仅在语音尚未提交的合成失败时退回文字，仍受语音频率限制。</div>
       <div class="row"><button id="voiceSettingsSave" type="button" class="small">保存语音设置</button><button id="voiceSettingsRefresh" type="button" class="small">刷新语音状态</button><span id="voiceSettingsStatus" class="meta" role="status" aria-live="polite">读取中…</span></div>
       <label for="voiceTtsText">试听／发送内容（最多 300 字符）</label>
       <textarea id="voiceTtsText" maxlength="300" rows="3" placeholder="输入想试听的文字，试听不会发到 QQ。" style="min-height:90px"></textarea>
@@ -3799,7 +3806,7 @@ function invalidateVoiceSpeechPreview() {
 function syncVoiceSpeechButtons() {
   const consent = document.getElementById('voiceOnlineConsent').checked;
   const enabled = document.getElementById('voiceTtsEnabled').checked;
-  const ready = voiceSpeechSaved?.config?.enabled !== false && voiceSpeechSaved?.config?.tts?.enabled === true
+  const ready = voiceSpeechSaved?.config?.tts?.enabled === true
     && voiceSpeechSaved?.config?.tts?.onlineConsent === true && voiceSpeechSaved?.status?.ttsReady === true;
   const text = document.getElementById('voiceTtsText').value.trim();
   for (const id of ['voiceSettingsSave', 'voiceSettingsRefresh', 'voiceTargetsRefresh']) document.getElementById(id).disabled = voiceSpeechBusy;
@@ -3814,6 +3821,8 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
     document.getElementById('voiceIncomingEnabled').checked = incoming.enabled === true;
     document.getElementById('voiceTtsEnabled').checked = tts.enabled === true;
     document.getElementById('voiceOnlineConsent').checked = tts.onlineConsent === true;
+    document.getElementById('voiceAiEnabled').checked = result.aiSendEnabled === true;
+    document.getElementById('voiceRandomProbability').value = Number.isInteger(tts.randomReplyProbability) ? tts.randomReplyProbability : 0;
     const select = document.getElementById('voiceTtsVoice');
     const voices = Array.isArray(result.voices) ? result.voices.filter(item => item?.gender === 'female' && voiceFemaleIds.has(item.id)) : [];
     if (voices.length) {
@@ -3827,6 +3836,10 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
     + '；单次最多等待 ' + Math.min(30, Math.max(1, Math.round((Number(incoming.timeoutMs) || 22000) / 1000))) + ' 秒，无需新增 key；不是本地离线识别。';
   const status = result.status || {};
   setVoiceSpeechMessage('voiceSettingsStatus', status.ttsReady === true ? '在线女声已就绪；试听不发 QQ' : ('在线女声未就绪：' + String(status.reason || (status.ttsInstalled === false ? '组件未安装' : '请启用并同意在线服务后保存'))), status.ttsReady === true ? 'ok' : '');
+  if (status.ttsReady === true) {
+    const probability = Number(tts.randomReplyProbability) || 0;
+    setVoiceSpeechMessage('voiceSettingsStatus', result.aiSendEnabled !== true ? '在线女声已就绪；AI 发语音已关闭（可手动试听／发送）' : ('在线女声已就绪；' + (probability > 0 ? '随机回复概率 ' + probability + '%' : '随机语音回复已关闭')), 'ok');
+  }
   syncVoiceSpeechButtons();
 }
 async function loadVoiceSpeechSettings(force = false) {
@@ -3865,11 +3878,16 @@ async function saveVoiceSpeechSettings() {
   }
   let input;
   try { input = voiceSpeechInput(); } catch (error) { setVoiceSpeechMessage('voiceSettingsStatus', error.message, 'err'); return; }
+  const rawProbability = document.getElementById('voiceRandomProbability').value;
+  const randomReplyProbability = Number(rawProbability);
+  if (rawProbability.trim() === '' || !Number.isInteger(randomReplyProbability) || randomReplyProbability < 0 || randomReplyProbability > 100) {
+    setVoiceSpeechMessage('voiceSettingsStatus', '随机语音概率必须是 0 到 100 的整数', 'err'); return;
+  }
   const draftRevision = voiceSpeechDraftRevision;
   voiceSettingsRevision++;
   voiceSpeechBusy = true; syncVoiceSpeechButtons();
   try {
-    const result = await api('/api/voice/settings', 'POST', { incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, voice: input.voice, rate: input.rate } });
+    const result = await api('/api/voice/settings', 'POST', { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, voice: input.voice, rate: input.rate, randomReplyProbability } });
     if (!result.ok) throw new Error(result.error || '保存失败');
     invalidateVoiceSpeechPreview();
     const loaded = await api('/api/voice/settings');
@@ -3933,7 +3951,7 @@ async function sendVoiceSpeech() {
   } catch (error) { setVoiceSpeechMessage('voiceTtsStatus', '发送未确认：' + (error.message || '请查看 QQ 后再重试'), 'err'); }
   finally { voiceSpeechBusy = false; syncVoiceSpeechButtons(); }
 }
-for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent', 'voiceTtsVoice', 'voiceTtsRate', 'voiceTtsText']) document.getElementById(id).addEventListener('input', () => {
+for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent', 'voiceAiEnabled', 'voiceRandomProbability', 'voiceTtsVoice', 'voiceTtsRate', 'voiceTtsText']) document.getElementById(id).addEventListener('input', () => {
   voiceSpeechDraftRevision++; invalidateVoiceSpeechPreview(); syncVoiceSpeechButtons();
   if (id !== 'voiceTtsText') setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；启用／同意开关须保存才生效');
 });
