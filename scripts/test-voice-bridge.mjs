@@ -277,7 +277,7 @@ test('unverified success and uncertain gateway failure never trigger duplicate t
 });
 
 test('permissions, probability, persona and reset changes during random synthesis cancel with no text fallback', async () => {
-  for (const kind of ['token', 'pause', 'probability', 'persona', 'epoch', 'voice', 'consent', 'textTool']) {
+  for (const kind of ['token', 'pause', 'probability', 'persona', 'epoch', 'voice', 'consent', 'textTool', 'provider']) {
     const reached = deferred(), gate = deferred();
     const f = await fixture({ config: randomConfig(100), hook: async () => { reached.resolve(); await gate.promise; } });
     try {
@@ -292,6 +292,7 @@ test('permissions, probability, persona and reset changes during random synthesi
       if (kind === 'voice') f.h.cfg.socialV2.voice.enabled = false;
       if (kind === 'consent') f.h.cfg.socialV2.voice.tts.onlineConsent = false;
       if (kind === 'textTool') f.h.cfg.socialV2.tools.sendMessage = false;
+      if (kind === 'provider') f.h.cfg.socialV2.voice.tts.provider = 'mimo';
       gate.resolve(); await assert.rejects(pending);
       assert.equal(recordRequests(f.h).length, 0, kind); assert.equal(f.h.calls.sent.length, 0, kind);
     } finally { gate.resolve(); await f.close(); }

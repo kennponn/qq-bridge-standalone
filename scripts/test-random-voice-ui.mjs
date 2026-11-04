@@ -21,7 +21,7 @@ function fixture() {
     value: '', checked: false, disabled: false, hidden: false, textContent: '', className: '', listeners: {},
     options: [{ value: 'zh-CN-XiaoxiaoNeural' }],
     addEventListener(event, callback) { this.listeners[event] = callback; },
-    pause() {}, load() {}, removeAttribute() {}, replaceChildren() {},
+    pause() {}, load() {}, removeAttribute() {}, replaceChildren() { this.options = []; }, appendChild(option) { this.options.push(option); },
   }]));
   for (const node of nodes.values()) {
     let value = node.value;
@@ -35,6 +35,7 @@ function fixture() {
   let hook;
   const context = vm.createContext({ URL, document: {
     getElementById(id) { assert.ok(nodes.has(id), id); return nodes.get(id); },
+    createElement() { return { value: '', textContent: '' }; },
     querySelector() { return toolCheckbox; },
     querySelectorAll() { return [toolCheckbox]; },
   },
@@ -47,6 +48,8 @@ function fixture() {
         result.aiSendEnabled = body.enabled;
         Object.assign(result.config.tts, body.tts);
         Object.assign(result.config.incoming, body.incoming);
+        if (body.mimoApiKey) result.mimoSecret = { configured: true };
+        if (body.clearMimoApiKey) result.mimoSecret = { configured: false };
       }
       return structuredClone(result);
     },
@@ -67,6 +70,45 @@ test('saved percentage and actual AI permission render separately, with zero for
   assert.equal(f.nodes.get('voiceRandomProbability').value, '0');
   assert.equal(f.nodes.get('voiceAiEnabled').checked, false);
   assert.match(f.nodes.get('voiceSettingsStatus').textContent, /AI 发语音已关闭/);
+});
+
+test('switching voice provider resets consent, rebuilds voices and keeps the draft until saved', () => {
+  const f = fixture(); f.controller.renderVoiceSpeechSettings(f.result);
+  f.nodes.get('voiceTtsProvider').value = 'mimo';
+  f.nodes.get('voiceTtsProvider').listeners.input();
+  assert.equal(f.nodes.get('voiceOnlineConsent').checked, false);
+  assert.equal(f.nodes.get('voiceTtsVoice').value, '冰糖');
+  assert.equal(f.nodes.get('voiceMimoSettings').hidden, false);
+  assert.match(f.nodes.get('voiceConsentLabel').textContent, /小米 MiMo/);
+  assert.equal(f.controller.hasVoiceSpeechDraft(), true);
+  assert.equal(f.nodes.get('voiceTtsPreview').disabled, true);
+});
+
+test('MiMo credentials are saved only through the narrow API, cleared from the form and never restored', async () => {
+  const f = fixture(); f.controller.renderVoiceSpeechSettings(f.result);
+  f.nodes.get('voiceTtsProvider').value = 'mimo'; f.nodes.get('voiceTtsProvider').listeners.input();
+  f.nodes.get('voiceOnlineConsent').checked = true;
+  f.nodes.get('voiceMimoApiKey').value = 'fixture-mimo-ui-key'; f.nodes.get('voiceMimoApiKey').listeners.input();
+  f.nodes.get('voiceMimoStyle').value = '  温柔自然  ';
+  const saved = await f.controller.saveVoiceSpeechSettings();
+  assert.equal(saved, true);
+  assert.equal(f.requests[0].path, '/api/voice/settings');
+  assert.equal(f.requests[0].body.mimoApiKey, 'fixture-mimo-ui-key');
+  assert.equal(f.requests[0].body.tts.provider, 'mimo'); assert.equal(f.requests[0].body.tts.style, '温柔自然');
+  assert.equal(f.nodes.get('voiceMimoApiKey').value, '');
+  assert.equal(JSON.stringify(f.result).includes('fixture-mimo-ui-key'), false);
+  await f.controller.loadVoiceSpeechSettings(); assert.equal(f.nodes.get('voiceMimoApiKey').value, '');
+});
+
+test('general parameter save does not leak MiMo Key into the full configuration endpoint', async () => {
+  const f = fixture(); f.controller.renderVoiceSpeechSettings(f.result);
+  f.nodes.get('voiceMimoApiKey').value = 'fixture-mimo-ui-key'; f.nodes.get('voiceMimoApiKey').listeners.input();
+  await f.controller.saveV2Config();
+  const general = f.requests.find(request => request.path === '/api/socialV2/config');
+  const voice = f.requests.find(request => request.path === '/api/voice/settings' && request.method === 'POST');
+  assert.ok(general); assert.ok(voice);
+  assert.equal(JSON.stringify(general.body).includes('fixture-mimo-ui-key'), false);
+  assert.equal(voice.body.mimoApiKey, 'fixture-mimo-ui-key');
 });
 
 test('saving valid probabilities carries AI toggle, preserves consent/voice and never sends QQ', async () => {

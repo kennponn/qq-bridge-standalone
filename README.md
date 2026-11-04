@@ -51,7 +51,7 @@ Windows 也可以双击 `start-ui.bat`，自动选择合适的 Node、启动守�
 
 接收语音使用 QQ 网关原生转写；这是在线能力，不是本机离线识别，实际可用性取决于网关和 QQ。
 
-女声朗读为可选功能，需要 Python >= 3.10 和 FFmpeg。安装 Python 依赖：
+在线朗读为可选功能，可选择微软 Edge 或小米 MiMo。两者均需要 FFprobe 校验音频；微软 Edge 额外需要 Python >= 3.10。安装 Edge 的 Python 依赖：
 
 ```powershell
 npm run voice:install
@@ -59,7 +59,7 @@ npm run voice:install
 
 这会在本机 `assets/voice-runtime/vendor/` 安装 `edge-tts==7.3.1` 及依赖，目录已被 Git 忽略，不随源码分发。可通过 `QQ_BRIDGE_TTS_PYTHON` 指定 Python 路径。
 
-控制台中勾选在线朗读及文字发送到 Microsoft 服务的同意项，然后保存。默认不启用、不自动朗读。先试听，再明确选择会话发送；模型调用沿用白名单、暂停和频率限制。详见 [VOICE.md](docs/guides/VOICE.md)。
+控制台中选择服务、勾选在线朗读及文字发送到该服务的同意项，然后保存。默认不启用、不自动朗读。MiMo 使用 `mimo-v2.5-tts` 官方接口，Key 在控制台独立保存到本机私有状态文件，不复用聊天模型 Token，也不需要 Python。支持预置音色和可选语气风格，尚不支持音色克隆／设计。先试听，再明确选择会话发送；模型调用沿用白名单、暂停和频率限制。详见 [VOICE.md](docs/guides/VOICE.md)。
 
 ## 人格和隐私
 

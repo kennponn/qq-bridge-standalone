@@ -2194,18 +2194,25 @@ button:active:not(:disabled) {
       <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
 
       </div></details>
-<details id="voiceSpeechPanel" class="settings-group"><summary>语音识别与女声朗读</summary><div class="settings-content">
+<details id="voiceSpeechPanel" class="settings-group"><summary>语音识别与在线朗读</summary><div class="settings-content">
       <div class="row">
         <label for="voiceIncomingEnabled" style="flex:1">接收 QQ 语音并转成文字</label><input type="checkbox" id="voiceIncomingEnabled" style="width:auto">
       </div>
       <div id="voiceIncomingStatus" class="meta">使用当前 QQ 网关的原生识别接口，无需新增 API key；单次最多等待 20 秒。不是本地离线识别。</div>
       <div class="row" style="margin-top:10px">
-        <label for="voiceTtsEnabled" style="flex:1">启用在线 Edge 女声朗读</label><input type="checkbox" id="voiceTtsEnabled" style="width:auto">
+        <label for="voiceTtsEnabled" style="flex:1">启用在线文字转语音</label><input type="checkbox" id="voiceTtsEnabled" style="width:auto">
       </div>
-      <div class="meta" id="voiceOnlineDisclosure">在线朗读会把你要朗读的文字发送到 Microsoft 的在线语音服务；不是本地离线合成，无需 API key。不要朗读密码、令牌或敏感隐私。试听只在控制台生成音频，不会发送到 QQ；手动发送需点击「发送语音到所选会话」。允许 AI 发语音并启用随机回复后，命中的机器人回复文本也会提交合成并发到 QQ。</div>
-      <label style="display:block;margin:8px 0"><input type="checkbox" id="voiceOnlineConsent" aria-describedby="voiceOnlineDisclosure" style="width:auto"> 我同意将朗读文字发送到 Microsoft 在线语音服务</label>
+      <div class="row"><label for="voiceTtsProvider" style="flex:0 0 auto">语音服务</label><select id="voiceTtsProvider" style="flex:1;min-width:0"><option value="edge">微软 Edge（免 Key）</option><option value="mimo">小米 MiMo · mimo-v2.5-tts</option></select></div>
+      <div class="meta" id="voiceOnlineDisclosure">在线朗读会把要朗读的文字发送到所选服务；微软 Edge 无需 Key，小米 MiMo 使用独立 API Key。不是本地离线合成。不要朗读密码、令牌或敏感隐私。试听不会发送到 QQ；随机语音会按已保存概率合成并发送。</div>
+      <label style="display:block;margin:8px 0"><input type="checkbox" id="voiceOnlineConsent" aria-describedby="voiceOnlineDisclosure" style="width:auto"> <span id="voiceConsentLabel">我同意将朗读文字发送到 Microsoft 在线语音服务</span></label>
+      <div id="voiceMimoSettings" hidden>
+        <div class="row"><label for="voiceMimoApiKey" style="flex:0 0 auto">MiMo Key</label><input id="voiceMimoApiKey" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已保存的 Key；只保存在本机" style="flex:1;min-width:0"></div>
+        <label><input id="voiceMimoClearKey" type="checkbox" style="width:auto"> 清除本机 MiMo Key</label><div id="voiceMimoKeyStatus" class="meta">尚未读取 Key 状态</div>
+        <label for="voiceMimoStyle">语气／风格（可选，最多 200 字）</label><input id="voiceMimoStyle" type="text" maxlength="200" placeholder="例如：温柔自然，轻松聊天，不要播音腔" style="width:100%;box-sizing:border-box">
+        <div class="meta">固定使用小米官方接口，不会复用聊天模型 Token。风格描述也会发送到小米；语速为模型风格提示，不保证精确百分比。</div>
+      </div>
       <div class="row">
-        <label for="voiceTtsVoice" style="flex:0 0 auto">女声</label>
+        <label for="voiceTtsVoice" style="flex:0 0 auto">音色</label>
         <select id="voiceTtsVoice" style="flex:1;min-width:0">
           <option value="zh-CN-XiaoxiaoNeural">晓晓 · 普通话</option><option value="zh-CN-XiaoyiNeural">晓伊 · 普通话</option><option value="zh-TW-HsiaoChenNeural">曉臻 · 台湾国语</option><option value="zh-HK-HiuGaaiNeural">曉佳 · 粤语</option>
         </select>
@@ -3776,7 +3783,22 @@ document.getElementById('aiNotifySend').addEventListener('click', async () => {
 });
 
 // ── 在线女声：明确同意后生成，试听与 QQ 发送分开 ──────────────────────────
-const voiceFemaleIds = new Set(['zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-TW-HsiaoChenNeural', 'zh-HK-HiuGaaiNeural']);
+const voiceFemaleIds = new Set(['zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-TW-HsiaoChenNeural', 'zh-HK-HiuGaaiNeural', '冰糖', '茉莉', 'Mia', 'Chloe', '苏打', '白桦', 'Milo', 'Dean']);
+const voiceProviderChoices = {
+  edge: [['zh-CN-XiaoxiaoNeural', '晓晓 · 普通话'], ['zh-CN-XiaoyiNeural', '晓伊 · 普通话'], ['zh-TW-HsiaoChenNeural', '晓臻 · 台湾国语'], ['zh-HK-HiuGaaiNeural', '晓佳 · 粤语']],
+  mimo: [['冰糖', '冰糖 · 中文女声'], ['茉莉', '茉莉 · 中文女声'], ['Mia', 'Mia · 英文女声'], ['Chloe', 'Chloe · 英文女声'], ['苏打', '苏打 · 中文男声'], ['白桦', '白桦 · 中文男声'], ['Milo', 'Milo · 英文男声'], ['Dean', 'Dean · 英文男声']]
+};
+function voiceSpeechProvider() { return document.getElementById('voiceTtsProvider').value === 'mimo' ? 'mimo' : 'edge'; }
+function updateVoiceProviderDisclosure(rebuild = false) {
+  const provider = voiceSpeechProvider();
+  document.getElementById('voiceMimoSettings').hidden = provider !== 'mimo';
+  document.getElementById('voiceConsentLabel').textContent = '我同意将朗读文字' + (provider === 'mimo' ? '和风格描述发送到小米 MiMo' : '发送到 Microsoft') + ' 在线语音服务';
+  if (rebuild) {
+    const select = document.getElementById('voiceTtsVoice'); select.replaceChildren();
+    for (const [id, name] of voiceProviderChoices[provider]) { const option = document.createElement('option'); option.value = id; option.textContent = name; select.appendChild(option); }
+    select.value = voiceProviderChoices[provider][0][0];
+  }
+}
 let voiceSpeechSaved = null;
 let voiceSpeechBusy = false;
 let voiceSettingsRevision = 0;
@@ -3793,7 +3815,7 @@ function voiceSpeechInput() {
   const rawRate = document.getElementById('voiceTtsRate').value;
   const rate = Number(rawRate);
   const voice = document.getElementById('voiceTtsVoice').value;
-  if (!voiceFemaleIds.has(voice)) throw new Error('请选择支持的女声');
+  if (!voiceProviderChoices[voiceSpeechProvider()].some(item => item[0] === voice)) throw new Error('请选择当前服务支持的音色');
   if (rawRate.trim() === '' || !Number.isFinite(rate) || rate < -50 || rate > 50) throw new Error('语速应在 -50 到 50 之间');
   return { text: document.getElementById('voiceTtsText').value.trim(), voice, rate: Math.round(rate) };
 }
@@ -3808,7 +3830,8 @@ function syncVoiceSpeechButtons() {
   const consent = document.getElementById('voiceOnlineConsent').checked;
   const enabled = document.getElementById('voiceTtsEnabled').checked;
   const ready = voiceSpeechSaved?.config?.tts?.enabled === true
-    && voiceSpeechSaved?.config?.tts?.onlineConsent === true && voiceSpeechSaved?.status?.ttsReady === true;
+    && voiceSpeechSaved?.config?.tts?.onlineConsent === true && voiceSpeechSaved?.status?.ttsReady === true
+    && (voiceSpeechSaved?.config?.tts?.provider || 'edge') === voiceSpeechProvider();
   const text = document.getElementById('voiceTtsText').value.trim();
   for (const id of ['voiceSettingsSave', 'voiceSettingsRefresh', 'voiceTargetsRefresh']) document.getElementById(id).disabled = voiceSpeechBusy;
   for (const id of ['voiceTtsPreview', 'voiceTtsSend']) document.getElementById(id).disabled = voiceSpeechBusy || !consent || !enabled || !ready || !text || text.length > 300;
@@ -3821,11 +3844,14 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
   if (updateDraft && !voiceSpeechSettingsDirty) {
     document.getElementById('voiceIncomingEnabled').checked = incoming.enabled === true;
     document.getElementById('voiceTtsEnabled').checked = tts.enabled === true;
+    document.getElementById('voiceTtsProvider').value = tts.provider === 'mimo' ? 'mimo' : 'edge';
+    updateVoiceProviderDisclosure();
+    document.getElementById('voiceMimoStyle').value = tts.style || '';
     document.getElementById('voiceOnlineConsent').checked = tts.onlineConsent === true;
     document.getElementById('voiceAiEnabled').checked = result.aiSendEnabled === true;
     document.getElementById('voiceRandomProbability').value = Number.isInteger(tts.randomReplyProbability) ? tts.randomReplyProbability : 0;
     const select = document.getElementById('voiceTtsVoice');
-    const voices = Array.isArray(result.voices) ? result.voices.filter(item => item?.gender === 'female' && voiceFemaleIds.has(item.id)) : [];
+    const voices = Array.isArray(result.voices) ? result.voices.filter(item => voiceProviderChoices[voiceSpeechProvider()].some(voice => voice[0] === item?.id)) : [];
     if (voices.length) {
       select.replaceChildren();
       for (const voice of voices) { const option = document.createElement('option'); option.value = voice.id; option.textContent = String(voice.name || voice.id); select.appendChild(option); }
@@ -3836,6 +3862,7 @@ function renderVoiceSpeechSettings(result, updateDraft = true) {
   document.getElementById('voiceIncomingStatus').textContent = 'QQ 网关原生语音识别：' + (incoming.enabled === true ? '已启用' : '已关闭')
     + '；单次最多等待 ' + Math.min(30, Math.max(1, Math.round((Number(incoming.timeoutMs) || 22000) / 1000))) + ' 秒，无需新增 key；不是本地离线识别。';
   const status = result.status || {};
+  document.getElementById('voiceMimoKeyStatus').textContent = result.mimoSecret?.configured === true ? 'MiMo Key 已配置（不会返回或显示 Key）' : result.mimoSecret?.error || '尚未配置 MiMo Key';
   setVoiceSpeechMessage('voiceSettingsStatus', status.ttsReady === true ? '在线女声已就绪；试听不发 QQ' : ('在线女声未就绪：' + String(status.reason || (status.ttsInstalled === false ? '组件未安装' : '请启用并同意在线服务后保存'))), status.ttsReady === true ? 'ok' : '');
   if (status.ttsReady === true) {
     const probability = Number(tts.randomReplyProbability) || 0;
@@ -3876,7 +3903,7 @@ async function loadVoiceSpeechTargets() {
 function hasVoiceSpeechDraft() { return voiceSpeechSettingsDirty; }
 function voiceSpeechSettingsPayload() {
   if (document.getElementById('voiceTtsEnabled').checked && !document.getElementById('voiceOnlineConsent').checked) {
-    throw new Error('启用前请明确同意将朗读文字发送到 Microsoft');
+    throw new Error('启用前请明确同意将朗读文字发送到所选在线语音服务');
   }
   const input = voiceSpeechInput();
   const rawProbability = document.getElementById('voiceRandomProbability').value;
@@ -3884,12 +3911,16 @@ function voiceSpeechSettingsPayload() {
   if (rawProbability.trim() === '' || !Number.isInteger(randomReplyProbability) || randomReplyProbability < 0 || randomReplyProbability > 100) {
     throw new Error('随机语音概率必须是 0 到 100 的整数');
   }
-  return { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, voice: input.voice, rate: input.rate, randomReplyProbability } };
+  const mimoApiKey = document.getElementById('voiceMimoApiKey').value;
+  const clearMimoApiKey = document.getElementById('voiceMimoClearKey').checked;
+  if (mimoApiKey && clearMimoApiKey) throw new Error('不能同时填写和清除 MiMo Key');
+  return { enabled: document.getElementById('voiceAiEnabled').checked, incoming: { enabled: document.getElementById('voiceIncomingEnabled').checked }, tts: { enabled: document.getElementById('voiceTtsEnabled').checked, onlineConsent: document.getElementById('voiceOnlineConsent').checked, provider: voiceSpeechProvider(), style: document.getElementById('voiceMimoStyle').value.trim(), voice: input.voice, rate: input.rate, randomReplyProbability }, ...(mimoApiKey ? { mimoApiKey } : {}), ...(clearMimoApiKey ? { clearMimoApiKey: true } : {}) };
 }
 function voiceSpeechSettingsMatch(result, payload) {
   return result?.ok === true && result.config?.enabled === payload.enabled && result.aiSendEnabled === payload.enabled
     && result.config?.incoming?.enabled === payload.incoming.enabled
-    && Object.entries(payload.tts).every(([field, value]) => result.config?.tts?.[field] === value);
+    && Object.entries(payload.tts).every(([field, value]) => result.config?.tts?.[field] === value)
+    && (!payload.mimoApiKey || result.mimoSecret?.configured === true) && (!payload.clearMimoApiKey || result.mimoSecret?.configured === false);
 }
 async function saveVoiceSpeechSettings({ payload, draftRevision = voiceSpeechDraftRevision, fromV2 = false } = {}) {
   if (voiceSpeechBusy || (!fromV2 && typeof v2ConfigSaveBusy !== 'undefined' && v2ConfigSaveBusy)) return false;
@@ -3905,7 +3936,11 @@ async function saveVoiceSpeechSettings({ payload, draftRevision = voiceSpeechDra
     const loaded = await api('/api/voice/settings');
     if (!loaded.ok) throw new Error('设置已保存，但状态刷新失败，请重新刷新');
     if (!voiceSpeechSettingsMatch(loaded, payload)) throw new Error('语音设置未获确认，读取值与提交值不一致，请重试保存');
-    if (draftRevision === voiceSpeechDraftRevision) voiceSpeechSettingsDirty = false;
+    if (draftRevision === voiceSpeechDraftRevision) {
+      voiceSpeechSettingsDirty = false;
+      document.getElementById('voiceMimoApiKey').value = '';
+      document.getElementById('voiceMimoClearKey').checked = false;
+    }
     renderVoiceSpeechSettings(loaded, draftRevision === voiceSpeechDraftRevision);
     const toolCheckbox = document.querySelector?.('[data-v2-tool="sendVoice"]');
     if (toolCheckbox) toolCheckbox.checked = loaded.aiSendEnabled === true;
@@ -3916,6 +3951,8 @@ async function saveVoiceSpeechSettings({ payload, draftRevision = voiceSpeechDra
 }
 function requireVoiceSpeechInput() {
   const input = voiceSpeechInput();
+  if ((voiceSpeechSaved?.config?.tts?.provider || 'edge') !== voiceSpeechProvider()
+      || (voiceSpeechSaved?.config?.tts?.style || '') !== document.getElementById('voiceMimoStyle').value.trim()) throw new Error('请先保存语音服务和风格设置，再生成试听');
   if (!input.text || input.text.length > 300) throw new Error('请输入 1 到 300 字符的朗读内容');
   if (!document.getElementById('voiceOnlineConsent').checked || !document.getElementById('voiceTtsEnabled').checked
     || voiceSpeechSaved?.config?.tts?.enabled !== true || voiceSpeechSaved?.config?.tts?.onlineConsent !== true || voiceSpeechSaved?.status?.ttsReady !== true) throw new Error('请先启用、同意在线服务并保存，等待语音状态就绪');
@@ -3969,7 +4006,8 @@ async function sendVoiceSpeech() {
   } catch (error) { setVoiceSpeechMessage('voiceTtsStatus', '发送未确认：' + (error.message || '请查看 QQ 后再重试'), 'err'); }
   finally { voiceSpeechBusy = false; syncVoiceSpeechButtons(); }
 }
-for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent', 'voiceAiEnabled', 'voiceRandomProbability', 'voiceTtsVoice', 'voiceTtsRate', 'voiceTtsText']) document.getElementById(id).addEventListener('input', () => {
+for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent', 'voiceAiEnabled', 'voiceRandomProbability', 'voiceTtsVoice', 'voiceTtsRate', 'voiceTtsText', 'voiceTtsProvider', 'voiceMimoApiKey', 'voiceMimoClearKey', 'voiceMimoStyle']) document.getElementById(id).addEventListener('input', () => {
+  if (id === 'voiceTtsProvider') { document.getElementById('voiceOnlineConsent').checked = false; updateVoiceProviderDisclosure(true); }
   voiceSpeechDraftRevision++; invalidateVoiceSpeechPreview(); syncVoiceSpeechButtons();
   if (id !== 'voiceTtsText') {
     voiceSpeechSettingsDirty = true;

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnAudioProcess } from './voice-process.js';
 import { probeAudio } from './voice-core.js';
+import { MIMO_VOICES, runMimoSpeech } from './voice-mimo.js';
 
 export const SPEECH_VOICES = Object.freeze([
   { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓 · 温柔自然', gender: 'female' },
@@ -11,6 +12,8 @@ export const SPEECH_VOICES = Object.freeze([
   { id: 'zh-HK-HiuGaaiNeural', name: '晓佳 · 粤语女声', gender: 'female' }
 ]);
 const VOICE_IDS = new Set(SPEECH_VOICES.map(v => v.id));
+export const speechVoices = provider => provider === 'mimo' ? MIMO_VOICES : SPEECH_VOICES;
+const voiceAllowed = (provider, voice) => speechVoices(provider).some(item => item.id === voice);
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const bounded = (v, fallback, min, max) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Math.round(Number(v)))) : fallback;
@@ -20,12 +23,14 @@ export function resolveVoiceSettings(value = {}) {
   const v = object(value) ? value : {};
   const i = object(v.incoming) ? v.incoming : {};
   const t = object(v.tts) ? v.tts : {};
+  const provider = t.provider === 'mimo' ? 'mimo' : 'edge';
   return {
     enabled: v.enabled === true,
     incoming: { enabled: i.enabled !== false, timeoutMs: bounded(i.timeoutMs, 22000, 1000, 30000), maxChars: bounded(i.maxChars, 4000, 100, 4000) },
     tts: {
-      enabled: t.enabled === true, onlineConsent: t.onlineConsent === true, provider: 'edge',
-      voice: VOICE_IDS.has(t.voice) ? t.voice : 'zh-CN-XiaoxiaoNeural', rate: bounded(t.rate, 0, -50, 50),
+      enabled: t.enabled === true, onlineConsent: t.onlineConsent === true, provider,
+      voice: voiceAllowed(provider, t.voice) ? t.voice : provider === 'mimo' ? '冰糖' : 'zh-CN-XiaoxiaoNeural',
+      style: typeof t.style === 'string' ? Array.from(t.style.trim()).slice(0, 200).join('') : '', rate: bounded(t.rate, 0, -50, 50),
       randomReplyProbability: typeof t.randomReplyProbability === 'number' ? bounded(t.randomReplyProbability, 0, 0, 100) : 0,
       maxChars: bounded(t.maxChars, 300, 20, 300), timeoutMs: bounded(t.timeoutMs, 45000, 5000, 60000),
       maxSeconds: bounded(t.maxSeconds, 90, 5, 90)
@@ -43,7 +48,7 @@ export function mergeVoiceSettings(current, patch) {
     if (typeof patch.enabled !== 'boolean') throw error('enabled 必须是布尔值');
     next.enabled = patch.enabled;
   }
-  for (const [key, fields] of Object.entries({ incoming: ['enabled', 'timeoutMs', 'maxChars'], tts: ['enabled', 'onlineConsent', 'voice', 'rate', 'randomReplyProbability', 'maxChars', 'timeoutMs', 'maxSeconds'] })) {
+  for (const [key, fields] of Object.entries({ incoming: ['enabled', 'timeoutMs', 'maxChars'], tts: ['enabled', 'onlineConsent', 'provider', 'voice', 'style', 'rate', 'randomReplyProbability', 'maxChars', 'timeoutMs', 'maxSeconds'] })) {
     if (patch[key] === undefined) continue;
     if (!object(patch[key]) || Object.keys(patch[key]).some(k => !fields.includes(k))) throw error(`${key} 设置无效`);
     next[key] = { ...(object(current?.[key]) ? current[key] : {}), ...patch[key] };
@@ -55,7 +60,11 @@ export function mergeVoiceSettings(current, patch) {
       if (value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)) throw error(`${key}.${field} 超出允许范围`);
     }
   }
-  if (patch.tts?.voice !== undefined && !VOICE_IDS.has(patch.tts.voice)) throw error('请选择列表中的女声');
+  if (patch.tts?.provider !== undefined && !['edge', 'mimo'].includes(patch.tts.provider)) throw error('请选择微软或小米 MiMo 语音服务');
+  if (patch.tts?.style !== undefined && (typeof patch.tts.style !== 'string' || Array.from(patch.tts.style).length > 200 || /[\x00-\x1f\x7f]/.test(patch.tts.style))) throw error('语音风格最多 200 字，不可含控制字符');
+  const provider = resolveVoiceSettings(next).tts.provider;
+  if (patch.tts?.voice !== undefined && !voiceAllowed(provider, patch.tts.voice)) throw error('请选择当前服务支持的音色');
+  if (provider !== resolveVoiceSettings(current).tts.provider && patch.tts?.onlineConsent !== true) next.tts.onlineConsent = false;
   return { ...next, ...resolveVoiceSettings(next) };
 }
 
@@ -139,7 +148,7 @@ export function runSpeechWorker({ root, output, text, voice, rate, timeoutMs, si
   });
 }
 
-export function createSpeechService({ root, getConfig, auditText, run = runSpeechWorker, probe = probeAudio, now = Date.now }) {
+export function createSpeechService({ root, getConfig, auditText, run = runSpeechWorker, runMimo = runMimoSpeech, probe = probeAudio, now = Date.now }) {
   const entries = new Map();
   const TTL = 10 * 60000, MAX_BYTES = 3 * 1024 * 1024;
   let active = 0, readiness = null, checkedAt = 0, checking = null;
@@ -156,6 +165,9 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
     for (const entry of entries.values()) if (entry.expiresAt <= now() && !entry.busy) remove(entry);
   };
   async function status(force = false) {
+    if (cfg().tts.provider === 'mimo') {
+      try { await runMimo({ root, check: true }); return true; } catch { return false; }
+    }
     if (!force && readiness !== null && now() - checkedAt < 60000) return readiness;
     if (checking) return checking;
     checking = (async () => {
@@ -167,18 +179,23 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
   }
   async function health() {
     const installed = await status(), settings = cfg();
+    const mimo = settings.tts.provider === 'mimo';
     return { ttsInstalled: installed, ttsReady: installed && settings.tts.enabled && settings.tts.onlineConsent,
-      reason: !installed ? '语音组件未安装或 Python 不可用' : !settings.tts.onlineConsent ? '请确认允许朗读文字发送到微软在线语音服务（免 Key）' : !settings.tts.enabled ? '文字转语音已关闭' : '在线女声可用，实际合成仍取决于网络服务' };
+      provider: settings.tts.provider, reason: !installed ? mimo ? '请保存 MiMo API Key，或检查本机凭据' : '语音组件未安装或 Python 不可用'
+        : !settings.tts.onlineConsent ? `请确认允许朗读文字发送到${mimo ? '小米 MiMo' : '微软'}在线语音服务`
+        : !settings.tts.enabled ? '文字转语音已关闭' : mimo ? 'MiMo Key 已配置；实际合成取决于账号权限和网络服务' : '在线女声可用，实际合成仍取决于网络服务' };
   }
   async function synthesize(value, { voice, rate, signal, assertAllowed = () => {} } = {}) {
     const settings = cfg();
     if (!settings.tts.enabled || !settings.tts.onlineConsent) throw error('请先启用文字转语音并确认在线服务授权', 403);
     const text = validateSpeechText(value, settings.tts.maxChars);
     const selected = voice ?? settings.tts.voice, speed = rate ?? settings.tts.rate;
-    if (!VOICE_IDS.has(selected) || !Number.isInteger(speed) || speed < -50 || speed > 50) throw error('音色或语速无效');
-    auditText(text); assertAllowed();
+    if (!voiceAllowed(settings.tts.provider, selected) || !Number.isInteger(speed) || speed < -50 || speed > 50) throw error('音色或语速无效');
+    auditText(text); if (settings.tts.style) auditText(settings.tts.style); assertAllowed();
+    const assertProvider = () => { if (cfg().tts.provider !== settings.tts.provider) throw error('语音服务已变化，请重新生成', 409); };
     if (!(await status())) throw error('语音组件不可用，请检查 Python 和 Edge TTS 安装', 503);
     assertAllowed();
+    assertProvider();
     if (!cfg().tts.enabled || !cfg().tts.onlineConsent) throw error('在线语音授权已关闭，已取消上传', 409);
     if (signal?.aborted) throw error('语音合成已取消', 409);
     if (active >= 2) throw error('正在生成语音，请稍后再试', 429);
@@ -196,8 +213,10 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
     const id = randomUUID(), file = path.join(dir, id + '.mp3');
     active++;
     try {
-      await run({ root, output: file, text, voice: selected, rate: speed, timeoutMs: settings.tts.timeoutMs, signal });
+      const worker = settings.tts.provider === 'mimo' ? runMimo : run;
+      await worker({ root, output: file, text, voice: selected, rate: speed, style: settings.tts.style, timeoutMs: settings.tts.timeoutMs, signal });
       assertAllowed();
+      assertProvider();
       const live = cfg();
       if (!live.tts.enabled || !live.tts.onlineConsent) throw error('在线语音授权已关闭，合成结果已丢弃', 409);
       if (signal?.aborted) throw error('语音合成已取消', 409);
@@ -210,9 +229,10 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
       const info = await probe(file, { timeoutMs: 5000 });
       if (!info.ok || info.codec !== 'mp3' || !(info.duration > 0) || info.duration > settings.tts.maxSeconds) throw error('语音过长或无法校验，请缩短朗读内容', 502);
       assertAllowed();
+      assertProvider();
       if (!cfg().tts.enabled || !cfg().tts.onlineConsent) throw error('在线语音授权已关闭，合成结果已丢弃', 409);
       if (signal?.aborted) throw error('语音合成已取消', 409);
-      const entry = { id, file, text, voice: selected, rate: speed, chars: Array.from(text).length, duration: info.duration, expiresAt: now() + TTL, busy: false, used: false };
+      const entry = { id, file, text, provider: settings.tts.provider, voice: selected, rate: speed, chars: Array.from(text).length, duration: info.duration, expiresAt: now() + TTL, busy: false, used: false };
       entries.set(id, entry);
       return entry;
     } catch (err) { deleteOwned(file); throw err; }
@@ -223,6 +243,7 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
     if (typeof id !== 'string' || !ID_RE.test(id)) throw error('试听编号无效');
     const entry = entries.get(id);
     if (!entry || entry.expiresAt <= now()) throw error('试听已过期，请重新生成', 404);
+    if (entry.provider !== cfg().tts.provider) throw error('语音服务已变化，请重新生成试听', 409);
     const dir = checkedDirectory(root, 'state/voice-previews');
     const st = fs.lstatSync(entry.file);
     if (!st.isFile() || st.isSymbolicLink() || fs.realpathSync(entry.file) !== path.join(dir, id + '.mp3')) throw error('试听文件不可用', 404);

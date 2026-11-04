@@ -25,7 +25,8 @@ import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { normalizeConversationMemory, rememberConversationMessage, formatConversationMemory, removeConversationMemory, upsertConversationFact, retainMessageText } from './conversation-memory.js';
 import { createIncomingVoiceProcessor, hasIncomingVoice, renderIncomingVoice } from './voice-incoming.js';
-import { createSpeechService, mergeVoiceSettings, resolveVoiceSettings, randomVoiceReplyText, SPEECH_VOICES } from './voice-speech.js';
+import { createSpeechService, mergeVoiceSettings, resolveVoiceSettings, randomVoiceReplyText, speechVoices } from './voice-speech.js';
+import { loadMimoApiKey, mimoSecretStatus, prepareMimoKeyUpdate } from './voice-mimo.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { normalizeImageForModel } from './media-normalize.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
@@ -1589,7 +1590,9 @@ async function main() {
       const stored = loadStoredEngineKey(ENGINE_SECRET_FILE);
       key = typeof stored === 'string' ? stored : stored?.apiKey || '';
     } catch {}
-    const credentials = [key, cfg.snowluma?.accessToken, cfg.consoleToken, cfg.dsh?.authToken,
+    let mimoKey = '';
+    try { mimoKey = loadMimoApiKey(ROOT); } catch {}
+    const credentials = [key, mimoKey, cfg.snowluma?.accessToken, cfg.consoleToken, cfg.dsh?.authToken,
       process.env.QQ_DIRECT_API_KEY, process.env.DEEPSEEK_API_KEY, process.env.ULTRAROUTER_API_KEY,
       process.env[cfg.engine?.directLLM?.apiKeyEnv || 'QQ_DIRECT_API_KEY'],
       ...KNOWN_AGENT_TOKENS].filter(value => typeof value === 'string' && value.length >= 3);
@@ -1610,9 +1613,11 @@ async function main() {
     if (!target) throw Object.assign(new Error('目标格式应为 group:群号 或 private:QQ号'), { statusCode: 400 });
     const epoch = sessionEpoch;
     const persona = currentPersonaSnapshot().stamp;
+    const provider = resolveVoiceSettings(cfg.socialV2?.voice).tts.provider;
     const sendGuard = captureSendGuard(key);
     const assertAllowed = () => {
       const settings = resolveVoiceSettings(cfg.socialV2?.voice);
+      if (settings.tts.provider !== provider) throw Object.assign(new Error('语音服务已变化，旧语音发送已取消'), { statusCode: 409 });
       if ((agent && !settings.enabled) || !settings.tts.enabled || !settings.tts.onlineConsent) throw Object.assign(new Error('语音已关闭或尚未同意在线语音服务'), { statusCode: 403 });
       if (!isSessionAllowedInCurrentMode(key) || epoch !== sessionEpoch || currentPersonaSnapshot().stamp !== persona) throw Object.assign(new Error('语音已取消：会话、模式、白名单或人设已变化'), { statusCode: 409 });
       if (agent && (currentMode !== 'reserved2' || !agentTokenOk(key, token) || socialV2.paused || cfg.socialV2?.enabled === false || !v2ToolEnabled('sendVoice') || shouldBlockSilentReply(key))) throw Object.assign(new Error('当前不允许 AI 发送语音'), { statusCode: 403 });
@@ -6119,19 +6124,28 @@ async function main() {
         if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/voice/settings') {
           if (req.method === 'POST') {
             const body = await readBody();
+            const { mimoApiKey, clearMimoApiKey, ...settingsPatch } = body;
             const configFile = path.join(ROOT, 'config.json');
             const file = readConfigObject(configFile);
-            const voice = mergeVoiceSettings(cfg.socialV2.voice, body);
+            const before = JSON.parse(JSON.stringify(file));
+            const voice = mergeVoiceSettings(cfg.socialV2.voice, settingsPatch);
+            if (voice.tts.style) assertSpeechTextSafe(voice.tts.style);
+            if (typeof mimoApiKey === 'string' && mimoApiKey.length >= 3 && voice.tts.style.includes(mimoApiKey)) throw Object.assign(new Error('语音风格不能包含 API Key'), { statusCode: 400 });
             const sendVoice = body.enabled !== undefined ? body.enabled : body.tts?.enabled;
             file.socialV2 = { ...(file.socialV2 ?? {}), voice,
               tools: { ...(file.socialV2?.tools ?? cfg.socialV2.tools), ...(sendVoice !== undefined ? { sendVoice: sendVoice === true } : {}) } };
             if (body.enabled === undefined && body.tts?.enabled === true) voice.enabled = true;
-            atomicWriteJson(configFile, file);
+            const secretUpdate = prepareMimoKeyUpdate(ROOT, { mimoApiKey, clearMimoApiKey });
+            try {
+              atomicWriteJson(configFile, file);
+              try { secretUpdate.commit(); } catch (error) { atomicWriteJson(configFile, before); throw error; }
+            } finally { secretUpdate.cleanup(); }
             cfg.socialV2.voice = voice;
             if (sendVoice !== undefined) cfg.socialV2.tools.sendVoice = sendVoice === true;
             speechService.invalidate();
           }
-          sendJson({ ok: true, config: resolveVoiceSettings(cfg.socialV2.voice), aiSendEnabled: cfg.socialV2.voice.enabled === true && v2ToolEnabled('sendVoice'), status: await speechService.health(), voices: SPEECH_VOICES });
+          sendJson({ ok: true, config: resolveVoiceSettings(cfg.socialV2.voice), aiSendEnabled: cfg.socialV2.voice.enabled === true && v2ToolEnabled('sendVoice'),
+            status: await speechService.health(), voices: speechVoices(resolveVoiceSettings(cfg.socialV2.voice).tts.provider), mimoSecret: mimoSecretStatus(ROOT) });
           return;
         }
         if (req.method === 'GET' && url.pathname.startsWith('/api/voice/preview/')) {

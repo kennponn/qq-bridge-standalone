@@ -34,6 +34,7 @@ import * as groupSendPermission from '../src/group-send-permission.js';
 import * as conversationMemory from '../src/conversation-memory.js';
 import * as voiceIncoming from '../src/voice-incoming.js';
 import * as voiceSpeech from '../src/voice-speech.js';
+import * as voiceMimo from '../src/voice-mimo.js';
 import { unwrap, createTurnCollector } from '../src/dsh-client.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -219,9 +220,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt,
     ...directEngine, ...directTools, ...engineSettings,
     ...conversationTiming, ...roleCard, ...outboundScheduler, ...directPerformance,
-    ...groupSendPermission, ...conversationMemory, ...voiceIncoming, ...voiceSpeech,
+    ...groupSendPermission, ...conversationMemory, ...voiceIncoming, ...voiceSpeech, ...voiceMimo,
     createSpeechService: options => voiceSpeech.createSpeechService({ ...options,
-      run: async () => { throw new Error('fixture speech unavailable'); } }),
+      run: async () => { throw new Error('fixture speech unavailable'); },
+      runMimo: async () => { throw new Error('fixture MiMo speech unavailable'); } }),
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,
