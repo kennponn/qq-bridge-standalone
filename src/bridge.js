@@ -8608,7 +8608,14 @@ async function main() {
 
   async function sendReplyMessagesV2(key, messages, delays, replyToMessageId, atUserId, { token = '', tool, response } = {}) {
     const candidate = currentMode === 'reserved2' && token ? randomVoiceReplyText(messages, cfg.socialV2?.voice, {
-      toolEnabled: v2ToolEnabled('sendVoice'), replyToMessageId, atUserId
+      toolEnabled: v2ToolEnabled('sendVoice'), replyToMessageId, atUserId,
+      onDecision: reason => {
+        if (reason === 'disabled' || reason === 'selected') return;
+        const labels = { burst: '连发多条', reply: '带引用', mention: '带 @ 点名',
+          'invalid-text': '文字为空、超长或格式不支持', 'rich-content': '含链接、代码或 CQ 内容',
+          'probability-miss': '本次概率未命中' };
+        log(`[voice] ${key} 随机语音保持文字：${labels[reason] || '不符合转换条件'}`);
+      }
     }) : null;
     const text = candidate === null ? null : cleanOnebotMessage(candidate) || null;
     if (text === null) return sendMessagesV2(key, messages, delays, replyToMessageId, atUserId);

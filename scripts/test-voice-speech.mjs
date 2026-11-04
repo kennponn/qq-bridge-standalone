@@ -96,6 +96,24 @@ test('random reply skips disabled gates, quotes, at, bursts, links, code, CQ and
   assert.equal(randomVoiceReplyText(['🙂'.repeat(300)], config, { toolEnabled: true, random: () => 0 }), '🙂'.repeat(300));
 });
 
+test('random voice diagnostics report fixed reasons without text or a second probability draw', () => {
+  const config = { ...allowedConfig(), tts: { ...allowedConfig().tts, randomReplyProbability: 50 } };
+  for (const [reason, messages, patch] of [
+    ['burst', ['a', 'b'], {}], ['reply', ['hello'], { replyToMessageId: '123' }],
+    ['mention', ['hello'], { atUserId: '456' }], ['invalid-text', ['x'.repeat(301)], {}],
+    ['rich-content', ['https://example.test'], {}], ['disabled', ['hello'], { toolEnabled: false }],
+    ['probability-miss', ['hello'], {}], ['selected', ['hello'], { random: () => 0 }]
+  ]) {
+    const reported = [];
+    let draws = 0;
+    const result = randomVoiceReplyText(messages, config, { toolEnabled: true,
+      random: () => { draws++; return 0.8; }, ...patch, onDecision: value => reported.push(value) });
+    assert.deepEqual(reported, [reason]);
+    assert.equal(result, reason === 'selected' ? 'hello' : null);
+    assert.equal(draws, reason === 'probability-miss' ? 1 : 0);
+  }
+});
+
 test('speech defaults fail closed and normalized caps cannot grow beyond bounded limits', () => {
   const defaults = resolveVoiceSettings();
   assert.equal(defaults.enabled, false);

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawnAudioProcess } from './voice-process.js';
 import { probeAudio } from './voice-core.js';
 
 export const SPEECH_VOICES = Object.freeze([
@@ -59,16 +59,19 @@ export function mergeVoiceSettings(current, patch) {
   return { ...next, ...resolveVoiceSettings(next) };
 }
 
-export function randomVoiceReplyText(messages, value, { toolEnabled = false, replyToMessageId, atUserId, random = Math.random } = {}) {
+export function randomVoiceReplyText(messages, value, { toolEnabled = false, replyToMessageId, atUserId, random = Math.random, onDecision } = {}) {
   const settings = resolveVoiceSettings(value);
   const tts = settings.tts;
-  if (!settings.enabled || !toolEnabled || !tts.enabled || !tts.onlineConsent || tts.randomReplyProbability === 0) return null;
-  if (!Array.isArray(messages) || messages.length !== 1 || (replyToMessageId != null && String(replyToMessageId).trim()) || atUserId) return null;
+  const report = (reason, text = null) => { onDecision?.(reason); return text; };
+  if (!settings.enabled || !toolEnabled || !tts.enabled || !tts.onlineConsent || tts.randomReplyProbability === 0) return report('disabled');
+  if (!Array.isArray(messages) || messages.length !== 1) return report('burst');
+  if (replyToMessageId != null && String(replyToMessageId).trim()) return report('reply');
+  if (atUserId) return report('mention');
   let text;
-  try { text = validateSpeechText(messages[0], tts.maxChars); } catch { return null; }
+  try { text = validateSpeechText(messages[0], tts.maxChars); } catch { return report('invalid-text'); }
   // Keep rich content and copyable links/code as text; never read CQ instructions aloud.
-  if (/\[CQ:|https?:\/\/|www\.|```|`|!\[|\[[^\]]*\]\(/i.test(text)) return null;
-  return random() < tts.randomReplyProbability / 100 ? text : null;
+  if (/\[CQ:|https?:\/\/|www\.|```|`|!\[|\[[^\]]*\]\(/i.test(text)) return report('rich-content');
+  return random() < tts.randomReplyProbability / 100 ? report('selected', text) : report('probability-miss');
 }
 
 export function validateSpeechText(value, maxChars = 300) {
@@ -114,7 +117,7 @@ export function runSpeechWorker({ root, output, text, voice, rate, timeoutMs, si
     const abort = () => finish(error('语音合成已取消', 409));
     if (signal?.aborted) return abort();
     try {
-      child = spawn(process.env.QQ_BRIDGE_TTS_PYTHON || 'python', ['-s', '-P', worker, ...(check ? ['--check'] : [])], {
+      child = spawnAudioProcess(process.env.QQ_BRIDGE_TTS_PYTHON || 'python', ['-s', '-P', worker, ...(check ? ['--check'] : [])], {
         shell: false, windowsHide: true, cwd: root, env: childEnvironment(runtimeDir), stdio: ['pipe', 'pipe', 'ignore']
       });
     } catch { finish(error('无法启动 Python 语音组件', 503)); return; }
@@ -200,7 +203,9 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
       if (signal?.aborted) throw error('语音合成已取消', 409);
       const st = fs.lstatSync(file);
       if (!st.isFile() || st.isSymbolicLink() || st.size < 4 || st.size > MAX_BYTES) throw error('生成音频大小或路径异常', 502);
-      const header = fs.readFileSync(file).subarray(0, 3);
+      const header = Buffer.alloc(3), fd = fs.openSync(file, 'r');
+      try { fs.readSync(fd, header, 0, header.length, 0); }
+      finally { fs.closeSync(fd); }
       if (header.toString() !== 'ID3' && !(header[0] === 0xff && (header[1] & 0xe0) === 0xe0)) throw error('生成结果不是 MP3 音频', 502);
       const info = await probe(file, { timeoutMs: 5000 });
       if (!info.ok || info.codec !== 'mp3' || !(info.duration > 0) || info.duration > settings.tts.maxSeconds) throw error('语音过长或无法校验，请缩短朗读内容', 502);

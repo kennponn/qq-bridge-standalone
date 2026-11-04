@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawnAudioProcess } from './voice-process.js';
 
 /** 网关能直接吃进去的音频扩展名（SnowLuma 会自动转 SILK）。 */
 export const AUDIO_EXTS = [
@@ -160,8 +160,9 @@ export async function probeAudio(file, { ffprobePath = 'ffprobe', timeoutMs = 10
   const run = () => new Promise((resolve) => {
     let child;
     try {
-      child = spawn(ffprobePath, [
+      child = spawnAudioProcess(ffprobePath, [
         '-v', 'error',
+        '-threads', '1',
         '-show_entries', 'format=duration,format_name',
         '-show_entries', 'stream=codec_name,codec_type,sample_rate,channels',
         '-of', 'json', '-o', outFile, file
@@ -394,12 +395,15 @@ export async function processAudioVolume(file, {
   const filters = plan.loudness !== null
     ? [`loudnorm=I=${plan.loudness}:TP=-1.5:LRA=11`]
     : [`volume=${plan.volume}`];
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-i', file, '-af', filters.join(','), '-ac', '1', outPath];
+  // Short voice clips do not need a CPU-sized filter pool or parallel codecs.
+  const inputArgs = ['-hide_banner', '-loglevel', 'error', '-y', '-filter_threads', '1', '-threads', '1', '-i', file];
+  const outputArgs = ['-af', filters.join(','), '-ac', '1', '-threads', '1'];
+  const args = [...inputArgs, ...outputArgs, outPath];
 
   const run = () => new Promise((resolve) => {
     let child;
     try {
-      child = spawn(ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
+      child = spawnAudioProcess(ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
     } catch (error) {
       resolve({ code: -1, error: `ffmpeg 启动失败：${error?.message ?? error}` });
       return;
@@ -416,11 +420,11 @@ export async function processAudioVolume(file, {
   // 原扩展名可能没有可用编码器（如 .amr/.silk 只读）→ 退回 wav 再试一次
   if ((res.error || res.code !== 0 || !fs.existsSync(outPath)) && ext && ext.toLowerCase() !== '.wav') {
     const wavPath = outPath.replace(/\.[^.]+$/, '.wav');
-    const wavArgs = ['-hide_banner', '-loglevel', 'error', '-y', '-i', file, '-af', filters.join(','), '-ac', '1', wavPath];
+    const wavArgs = [...inputArgs, ...outputArgs, wavPath];
     res = await new Promise((resolve) => {
       let child;
       try {
-        child = spawn(ffmpeg, wavArgs, { windowsHide: true, stdio: 'ignore' });
+        child = spawnAudioProcess(ffmpeg, wavArgs, { windowsHide: true, stdio: 'ignore' });
       } catch (error) {
         resolve({ code: -1, error: `ffmpeg 启动失败：${error?.message ?? error}` });
         return;
