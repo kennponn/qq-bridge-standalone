@@ -1,26 +1,23 @@
-# Security and Privacy
+# 安全与隐私
 
-Do not post credentials, private QQ/group identifiers, conversation transcripts,
-local configuration, or runtime state in public issues or pull requests.
+不要在公开问题反馈或拉取请求中发布凭据、私人 QQ 号和群号、聊天记录、本地配置或运行状态。
 
-The console is a local administrative interface. Do not expose it directly to
-the Internet, put its token in a public URL, or share an authenticated browser
-session. Keep OneBot management endpoints local and authenticated.
+## 本地管理接口
 
-Model prompts include authorized messages, role cards, and conversation context.
-Online search and optional speech introduce additional third-party requests.
-Review each provider's data handling and obtain participant consent before use.
+控制台是本地管理界面。不要将它直接暴露到公网，不要把控制台令牌放进公开链接，也不要分享已登录的浏览器会话。OneBot 管理接口应仅供本机访问，并启用身份验证。
 
-Allowlists and tool boundaries are important controls, not a guarantee against
-prompt injection, mistaken replies, provider failures, or QQ account restrictions.
-Regex-based outbound secret checks cannot recognize every secret. Filesystem ACLs
-are not encryption. Keep independent backups of your private installation.
+## 第三方服务与参与者同意
 
-For a suspected vulnerability, use a private contact channel agreed with the
-repository owner. If no private reporting channel exists, publish only a minimal
-description and request a private channel without including exploit credentials
-or another person's messages.
+模型提示词包含已授权的消息、人格卡和会话上下文。联网搜索和可选语音功能还会请求其他第三方服务。使用前应了解每个提供方的数据处理方式，并取得参与者同意。
 
-For incidents: stop the bridge, revoke affected tokens/keys at their issuers,
-review local logs privately, and remove public copies where possible. Deleting a
-Git commit does not erase already published secrets or copies held by others.
+## 已知风险
+
+白名单和工具权限边界是重要控制，但不能保证消除提示词注入、误回复、服务故障或 QQ 账号限制。正则表达式秘密扫描无法识别所有秘密，文件系统访问控制也不等于加密。请单独备份自己的私人运行目录。
+
+## 报告疑似漏洞
+
+请使用与仓库维护者约定的私下联系渠道。若尚无私下报告渠道，公开反馈中只写最小问题描述，并请求建立私下渠道；不要附上可用凭据、他人的消息或敏感配置。
+
+## 发生泄露时
+
+先停止桥接器，在对应提供方撤销或轮换受影响的 Token 和密钥，私下审查本地日志，并尽可能移除公开副本。删除 Git 提交不能清除已经泄露的秘密，也无法删除他人保存的副本。

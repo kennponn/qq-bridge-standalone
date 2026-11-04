@@ -1,17 +1,30 @@
-# Contributing
+# 参与贡献
 
-Use Node.js >=22.13.0. Install locked dependencies with `npm ci`, run `npm test`,
-`npm run test:voice`, and `npm run release:check` before opening a pull request.
+欢迎提交问题反馈、文档改进和代码修复。请先阅读 [README](README.md)、[安全与隐私](SECURITY.md) 和 [权限边界](RULES.md)。
 
-Tests must use synthetic accounts, synthetic secrets, temporary directories,
-mock OneBot gateways, and mock providers. Never send a test message to a real QQ
-group, call a paid model, or read another user's DSH credentials by default.
+## 开发与检查
 
-Keep host authorization, per-conversation identity, allowlists, pause/reset
-invalidation, rate limits, bounded timeouts, and private assistant text intact.
-Role cards cannot grant permissions. Administrative APIs cannot be exposed as
-model tools.
+使用 Node.js >= 22.13.0。在项目根目录执行：
 
-Do not add runtime state, provider keys, personal role cards, dependencies,
-third-party gateway binaries, or unlicensed media to the repository. Preserve
-copyright notices and document the license of new dependencies.
+```powershell
+npm ci
+npm test
+npm run test:voice
+npm run release:check
+```
+
+默认测试包含版本与文档一致性检查。提交拉取请求前，请在 [更新日志](CHANGELOG.md) 的“未发布”章节记录面向用户的改动；正式发布步骤见 [发布说明](docs/PUBLISHING.md)。
+
+## 测试边界
+
+测试必须使用虚构账号、虚构密钥、临时目录、模拟 OneBot 网关和模拟模型服务。默认测试不得向真实 QQ 群发送消息、调用付费模型或读取他人的 DSH 凭据。
+
+## 必须保留的安全控制
+
+- 保留宿主授权、逐会话身份、白名单、暂停与重置后的权限失效、频率限制和有界超时。
+- 模型的普通文本保持私有，真实发送仍必须经过授权的 QQ 工具。
+- 人格卡不能授予权限，管理接口不能作为模型工具暴露。
+
+## 不得提交的内容
+
+不要提交运行状态、模型密钥、私人角色、已安装的依赖、第三方网关二进制或未经授权的媒体。保留版权声明，新增依赖时同步记录其许可信息。

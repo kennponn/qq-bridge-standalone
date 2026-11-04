@@ -1,4 +1,4 @@
-# Example Assistant
+# 示例助手
 
 ## 身份
 

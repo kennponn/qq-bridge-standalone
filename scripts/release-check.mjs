@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { inspectReleaseDocs } from './check-release-docs.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const issues = [];
@@ -95,9 +96,10 @@ const config = JSON.parse(fs.readFileSync(path.join(root, 'config.example.json')
 if (config.ownerQQ !== null || config.allowAllWhenEmpty !== false || config.allow?.groups?.length || config.allow?.private?.length) issues.push('config.example.json: unsafe identity/allowlist defaults');
 if (config.consoleToken || config.snowluma?.accessToken || config.dsh?.authToken) issues.push('config.example.json: nonempty administrative credential');
 if (config.socialV2?.voice?.tts?.enabled !== false || config.socialV2?.voice?.tts?.onlineConsent !== false) issues.push('config.example.json: online speech must default off without consent');
-for (const required of ['README.md', 'LICENSE', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'roles/assistant.md', 'docs/PUBLISHING.md', 'docs/guides/VOICE.md', '.github/workflows/ci.yml']) {
+for (const required of ['README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'roles/assistant.md', 'docs/PUBLISHING.md', 'docs/guides/VOICE.md', '.github/workflows/ci.yml']) {
   if (!files.map(slash).includes(required)) issues.push(`${required}: missing public release file`);
 }
+issues.push(...inspectReleaseDocs(root));
 if (issues.length) {
   console.error(`Release check failed: ${issues.length} finding(s).`);
   console.error([...new Set(issues)].join('\n'));

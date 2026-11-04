@@ -1,68 +1,37 @@
-# QQ voice in the standalone engine
+# 独立引擎的 QQ 语音功能
 
-The built-in console at http://127.0.0.1:3100/ includes voice settings,
-four female voices, speed selection, a text preview player, and explicit sending
-to an existing group/private conversation. No separate voice-tool GUI is required.
+内置控制台 `http://127.0.0.1:3100/` 提供语音设置、四种女声、语速选择、文本合成试听，以及向现有群聊或私聊明确发送的操作。不需要单独安装旧 `voice-tool` 图形界面。
 
-## Incoming voice
+## 接收语音与转写
 
-`socialV2.voice.incoming.enabled` defaults to true. SnowLuma's native
-`fetch_ptt_text` action transcribes the actual QQ message ID. This uses QQ's
-online service, not offline recognition and not a new third-party model key.
-QQ may take about 20 seconds; the host stops waiting after 22 seconds by default.
-Only that conversation waits. Other conversations and normal text stay independent.
+`socialV2.voice.incoming.enabled` 默认开启。SnowLuma 原生的 `fetch_ptt_text` 操作根据真实 QQ 消息 ID 转写语音，使用 QQ 在线服务，不是离线识别，也不需要新增第三方模型密钥。QQ 转写可能需要约 20 秒，宿主默认在 22 秒后停止等待。只有当前会话等待，其他会话和普通文本处理互不影响。
 
-Transcripts retain their real sender, mentions and quoted sources. Recognized
-speech cannot execute host slash commands, approve requests or create explicit
-durable facts. Failed recognition produces an honest placeholder, not guessed text.
-Pause, reset, permission changes and persona changes invalidate old work.
+转写保留真实发送者、提及和引用来源。识别出的语音不能执行宿主斜杠命令、批准请求或直接创建明确的长期事实。转写失败时只显示诚实的占位说明，不猜测内容。暂停、重置、权限和人格变化会使旧任务失效。
 
-## Text to speech
+## 文本转语音与试听
 
-TTS defaults to disabled with online consent false. In the console's voice section,
-enable TTS, explicitly agree to sending the spoken text to Microsoft's online
-service, select a voice, then save. This service requires no API key, but network
-availability is required and service stability is not guaranteed.
+TTS 默认关闭，`onlineConsent` 默认 `false`。在控制台语音区域启用朗读，明确同意将朗读文本发送给 Microsoft 在线服务，选择音色并保存。该服务不需要 API Key，但需要网络，其稳定性不由本项目保证。
 
-Preview uploads only the text entered for synthesis. It never sends a QQ message
-and never auto-plays. Sending is a separate confirmed action. A saved voice enables
-the session-bound `qq_speak_text` tool on the next model turn. It uses the operator's
-voice settings and accepts only short plain text, not paths, URLs, SSML or commands.
-The bot does not automatically read every reply aloud. Its active persona/model
-is unchanged.
+试听只上传输入的合成文本，不发送 QQ 消息，也不会自动播放。真实发送是独立操作，需要另外确认。保存语音配置后，下一模型回合可使用绑定会话的 `qq_speak_text` 工具；它沿用管理员选择的音色，只接收短纯文本，不接收路径、网址、SSML 或命令。机器人不会自动朗读所有回复，也不会因此改变当前人格或模型。
 
-The component requires Python and FFprobe. Install the pinned package inside the
-bridge directory (not globally):
+组件需要 Python 和 FFprobe。将锁定版本的 Python 依赖安装到桥接器目录，而不是全局环境：
 
 ```powershell
 python -m pip install --target assets/voice-runtime/vendor -r scripts/requirements-voice.txt
 ```
 
-The console checks local imports only when reporting component readiness. Health
-checks do not synthesize text or contact the TTS provider. Generated MP3s are checked
-for duration/size, limited to 300 characters and 90 seconds, and cached with opaque
-IDs for 10 minutes. At most two synthesis workers and 20 previews are retained.
-Expired generated files are cleaned on the next synthesis; shutdown does not
-delete the operator's audio library. Cache paths and worker environments are isolated.
+控制台报告组件就绪时只检查本地模块能否导入，健康检查不会合成文本或请求在线语音提供方。合成文本限制为 300 字符，生成 MP3 会检查大小和时长，最长 90 秒；文件使用不透明 ID 缓存 10 分钟。最多同时运行两个合成进程，并保留 20 条试听。过期生成文件在下一次合成时清理；关闭桥接器不会删除管理员的语音素材库。缓存路径和工作进程环境均隔离。
 
-## Sending and verification
+## 发送权限与送达验证
 
-AI speech respects session tokens, the current allowlist, pause/silent mode,
-persona changes, QQ group send permission, and existing voice limits (default
-2 per minute / 10 per hour per conversation). Operator sends also respect the
-allowlist, content audit and voice budget. Known credentials/path patterns are
-blocked before the text can reach the online service.
+AI 语音遵守会话令牌、当前白名单、暂停和静默状态、人格变化、QQ 群发送权限以及现有语音限制，默认每会话每分钟 2 条、每小时 10 条。管理员手动发送也须通过白名单、内容审查和语音额度限制。已知凭据和路径格式在文本传给在线服务前会被拦截。
 
-`verified=true` requires reading back the sent QQ message with a record segment.
-An acknowledgement without verification is not confirmed delivery. Do not retry
-an unconfirmed message automatically, since QQ may already have accepted it.
-Prepared audio files remain available through the existing voice-library routes.
+只有回读已发送的 QQ 消息并确认含有语音片段，才能返回 `verified=true`。收到发送响应但未验证，不等于确认送达；不要自动重试未确认的消息，因为 QQ 可能已经接收。已有音频文件仍可通过现有语音素材库接口使用。
 
-## Offline regression tests
+## 离线回归测试
 
 ```powershell
 node --test scripts/test-voice-incoming.mjs scripts/test-voice-speech.mjs scripts/test-voice-tools.mjs scripts/test-voice-bridge.mjs
 ```
 
-These tests inject fake gateway, synthesis and model peers. They never send
-real QQ messages or upload private conversation text.
+测试注入模拟网关、合成服务和模型，不发送真实 QQ 消息，也不上传私人聊天文本。

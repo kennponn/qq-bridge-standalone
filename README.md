@@ -1,4 +1,8 @@
-# QQ Bridge
+# QQ Bridge Standalone
+
+**当前版本：`v0.2.1-r1`（首个开源预发布版）**
+
+[版本下载与说明](https://github.com/kennponn/qq-bridge-standalone/releases/tag/v0.2.1-r1) · [更新日志](CHANGELOG.md) · [中文文档](docs/README.md)
 
 一个本地运行的 QQ AI 机器人桥接项目：连接你自行安装的 SnowLuma / OneBot 网关，让支持 OpenAI 兼容接口的模型参与群聊和私聊。
 
@@ -84,3 +88,5 @@ npm run release:check
 **MIT 不覆盖 SnowLuma 或其他第三方组件。** 本包不含 QQ、SnowLuma 本体、专有原生组件、已安装的 npm 依赖或 Python 二进制。`@snowluma/sdk` / `@snowluma/mcp` 的锁定版本声明独立许可，请在公开分发、商业使用或部署前核对原始许可及授权要求；本项目不代替上游授予权利。
 
 详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+`LICENSE` 保留 MIT 英文原文和原作者版权声明；安装、贡献、安全和第三方依赖说明均使用中文。部分文件名保留 GitHub 通用名称，方便平台识别。

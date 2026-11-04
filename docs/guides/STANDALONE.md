@@ -1,28 +1,28 @@
-# Standalone QQ bridge
+# Standalone 独立引擎
 
-Standalone mode owns its sessions, policies, queues and model requests. It never creates a DSH API client, follows DSH sessions, polls DSH, reads DSH credentials, or starts the DSH event pump. DSH can remain closed or be uninstalled. QQ and its SnowLuma/OneBot gateway still need to be running.
+独立模式自行管理会话、策略、队列和模型请求，不会创建 DSH API 客户端、跟随或轮询 DSH 会话、读取 DSH 凭据或启动 DSH 事件处理。DSH 可以保持关闭，甚至不安装；QQ 和 SnowLuma / OneBot 网关仍需运行。
 
-## Start and configure
+## 启动与配置
 
-1. Install standard Node.js >=22.13.0 and the project's npm dependencies. `start-ui.bat` detects standard Node.js under Program Files before PATH; `QQ_BRIDGE_NODE` selects another installed Node executable. It does not use DSH's bundled runtime.
-2. Double-click `start-ui.bat`. The guard launches the bridge and opens its authenticated local console. Only loopback is bound. The existing `start.bat` remains unchanged.
-3. In the overview engine panel select standalone and configure your OpenAI-compatible HTTPS endpoint, model and API key.
-4. Test the connection, then save. The test reads `GET /models`; it does not call the chat endpoint or send QQ messages. A successful listing with `modelAvailable=false` is a warning, not confirmation that the configured model works.
-5. Backend changes require restarting the bridge. Model, stored-key and standalone system-prompt updates apply on the next turn. Restart from the UI is automatic only while a guard is running; a bare `node src/bridge.js` process only exits.
+1. 安装标准 Node.js >= 22.13.0 和项目 npm 依赖。`start-ui.bat` 优先检测 Program Files 下的标准 Node；可用 `QQ_BRIDGE_NODE` 指定其他已安装的 Node 可执行文件，不使用 DSH 自带运行环境。
+2. 双击 `start-ui.bat`。守护进程启动桥接器并打开需要认证的本地控制台，仅监听本机回环地址。原有 `start.bat` 保持不变。
+3. 在概览页的引擎面板中选择 Standalone，配置 OpenAI 兼容 HTTPS 接口、模型名称和 API Key。
+4. 先测试连接，再保存。测试只读取 `GET /models`，不会调用聊天接口或发送 QQ 消息。读取成功但 `modelAvailable=false` 时只表示警告，不能证明所选模型可用。
+5. 切换后端需要重启桥接器；模型、已保存密钥和独立引擎系统提示词在下一回合生效。只有运行着守护进程时，控制台重启才会自动恢复；直接运行 `node src/bridge.js` 的进程只会退出。
 
-The active runtime backend is displayed separately from the saved backend. `ready` means local model configuration and credentials are valid, not that QQ is connected or that the provider has just been contacted. QQ health and the last connection test have separate indicators.
+实际运行后端与已保存后端分开展示。`ready` 仅表示本地模型配置和凭据有效，不代表 QQ 已连接或刚刚联系过模型提供方。QQ 健康状态和最近一次连接测试有各自的指示。
 
-## Start SnowLuma from the console
+## 从控制台启动 SnowLuma
 
-The overview includes an operator-only SnowLuma startup button. It uses the configured installation's bundled `node.exe` with the installed version checker, not the bridge's Node or a relative BAT command. Existing QQ windows can stay open. Startup does not close QQ, automatically accept agreements, bypass SnowLuma login, or send messages.
+概览页提供仅管理员可使用的 SnowLuma 启动按钮。它使用指定安装目录自带的 `node.exe` 和版本检查器，不使用桥接器的 Node 或相对路径 BAT 命令。已有 QQ 窗口可以保持打开；启动不会关闭 QQ、自动接受协议、绕过 SnowLuma 登录或发送消息。
 
-Auto-loading all open QQ instances is OFF by default. With multiple QQ instances, start the gateway, open its local management page, and load the intended QQ process. To explicitly opt in to attaching all open QQ instances, check the option and confirm. Changing this option does not reconfigure an already-running gateway.
+自动挂载所有已打开 QQ 实例的选项默认关闭。存在多个实例时，请启动网关、打开本地管理页，再挂载目标 QQ 进程。如需全部挂载，应明确勾选并确认；修改选项不会重新配置已经运行的网关。
 
-Launch receipts, process handles, configured local-port checks and a cooldown prevent duplicate startup. An uncertain or stale startup claim blocks launching without claiming that the gateway is connected. If a claim needs manual repair, first verify that no startup is still in progress; do not delete state blindly. The management link is a validated configured local address, not proof that its server is listening. External launches with environment-overridden ports are outside this launcher's receipt tracking; check those instances separately before starting. A spawned process is distinct from an authenticated OneBot WebSocket connection and from model readiness.
+启动记录、进程句柄、本地端口检查和冷却时间用于防止重复启动。状态不明确或记录过期时会阻止再次启动，不会因此声称网关已连接。手动修复前应确认没有仍在进行的启动操作，不要盲目删除状态。管理链接只表示配置地址通过了本地地址校验，不证明服务正在监听。通过环境变量修改端口并在外部启动的实例不属于本启动器的记录范围，请另行检查。进程已启动、OneBot WebSocket 已认证连接、模型配置就绪是三个不同状态。
 
-Model API keys come from your chosen model provider, not QQ or SnowLuma. Keep them private and confirm the provider's quota and model permissions.
+模型 API Key 来自所选模型提供方，不来自 QQ 或 SnowLuma。请保密，并确认额度和模型访问权限。
 
-## Configuration and secrets
+## 配置与密钥
 
 ```json
 {
@@ -44,25 +44,25 @@ Model API keys come from your chosen model provider, not QQ or SnowLuma. Keep th
 }
 ```
 
-The UI materializes `engine.directLLM`; thereafter DSH model settings do not control it. Legacy configs default to DSH and migrate their provider/model only when independent settings are first created. `QQ_BRIDGE_ENGINE` is an optional explicit runtime override; remove it to let the UI backend selection take effect.
+控制台创建独立的 `engine.directLLM` 设置后，DSH 模型设置不再控制它。旧配置默认使用 DSH，仅在首次创建独立设置时迁移原提供方和模型。`QQ_BRIDGE_ENGINE` 可明确覆盖运行后端；若希望控制台的后端选择生效，应移除该环境变量。
 
-Keys are not returned in status, preloaded into forms, logged, or stored in browser storage. A blank password field keeps the current stored key. Clearing requires an explicit checkbox. A stored key is held in a private ACL-restricted `state/direct-engine-secret.json` and scoped to its provider and endpoint. It is not encryption: the current OS account and administrators can read it. Environment keys take precedence over stored keys; clearing a stored key does not clear an environment variable. Changing provider/endpoint does not reuse a differently scoped stored key.
+密钥不会在状态接口返回，不会预填到表单、写进日志或保存在浏览器存储中。密码框留空会保留已保存密钥；清除必须明确勾选相应选项。已保存密钥位于受本地访问控制限制的 `state/direct-engine-secret.json`，并绑定提供方和接口地址。这不是加密，当前系统账号和管理员仍可读取。环境变量密钥优先于已保存密钥；清除文件中的密钥不会清除环境变量。切换提供方或地址不会复用作用域不匹配的旧密钥。
 
-## Sessions and behavior
+## 会话与行为边界
 
-- Standalone session identities are local UUIDs in `state/sessions-standalone.json`. Legacy DSH mappings remain in `state/sessions.json`, untouched by standalone resets.
-- Startup rotates QQ tool tokens to revoke previously running DSH agents. It cannot cancel a task already running inside DSH without contacting DSH; stop/cancel those old tasks separately before changing backend.
-- Only the safe second-generation mode (`reserved2` / `simulation`) is supported. First-generation and full local-agent modes require the DSH backend. Command execution and arbitrary local files are never exposed to the independent model.
-- Assistant text is private. Sending requires safe QQ tools with host-bound session credentials, target IDs, the existing allowlist and per-tool switches. Silent administrative turns cannot send QQ messages.
-- Message snapshots, recent QQ history, role cards, per-conversation background and local memory rebuild context each direct turn; a complete old DSH transcript is not migrated. Changing a role or background is effective on the next independent turn.
-- Missing model credentials queue a coalesced wake instead of dropping unread messages. Saving valid settings replays that queue. Provider requests have bounded timeout/retry; sending tools are not automatically replayed.
-- Cursor authorization, explicit `throughSeq`, pre-sleep observation, pause, reset and whitelist revocation remain enforced. Expired finite-sleep failures back off rather than immediately spinning.
-- Standalone system instructions live in `prompts/standalone-system.txt`. The existing v2 prompt editor edits this local file with local backups, without writing DSH installation files.
-- Automatic DSH-based slang extraction/deep research are unavailable in standalone. Manual slang maintenance, model-safe query/submission, memory, images, stickers, search and enabled voice tools remain supported.
+- 独立会话使用 `state/sessions-standalone.json` 中的本地 UUID；旧 DSH 映射保留在 `state/sessions.json`，独立模式重置不会改动它。
+- 启动时轮换 QQ 工具令牌，使旧 DSH 代理失去发送权限；但不联系 DSH 就无法取消其内部已运行的任务，切换前请另行停止这些任务。
+- 仅支持安全的二代模式 `reserved2` / `simulation`。一代和完整本地代理模式需要 DSH 后端；独立模型不能执行命令或读写任意本地文件。
+- 模型普通文本保持私有。发送必须经过绑定宿主会话凭据和目标 ID 的安全 QQ 工具，同时满足白名单和逐工具开关；静默管理回合不能发送 QQ 消息。
+- 每个回合使用消息快照、近期 QQ 历史、人格卡、逐会话背景和本地记忆重建上下文，不迁移完整旧 DSH 对话。修改人格或背景在下一独立回合生效。
+- 缺少模型凭据时会合并待唤醒任务，而不是丢弃未读消息；保存有效设置后会重放队列。模型请求有界超时和重试，发送工具不会自动重放。
+- 仍然执行游标授权、明确的 `throughSeq`、睡眠前观察、暂停、重置和白名单撤销。有限睡眠到期后的失败会退避，避免立即反复运行。
+- 系统提示词位于 `prompts/standalone-system.txt`。二代提示词编辑器修改本地文件并保存本地备份，不改动 DSH 安装文件。
+- 独立模式不提供基于 DSH 的自动黑话提取和深度研究；仍支持手动黑话管理、模型安全查询与提交、记忆、图片、表情、搜索及已启用的语音工具。
 
-## Offline verification
+## 离线验证
 
-Use a supported Node executable, not an old Node on PATH:
+使用符合要求的 Node，不要误用 PATH 中的旧版本：
 
 ```text
 npm run test:standalone
@@ -71,4 +71,4 @@ npm run test:engine-ui
 npm run test:direct
 ```
 
-Tests use synthetic keys, temporary config/state, a mock OneBot gateway and mock model responses. The full-process test starts without a `dsh/` directory, leaves a simulated DSH server unavailable, asserts ZERO requests to it, and verifies local session creation/reset, safe tool execution, private turns, UI settings and prompt persistence. It never connects to production QQ, DSH or a provider.
+测试使用虚构密钥、临时配置和状态、模拟 OneBot 网关及模型响应。完整进程测试不依赖 `dsh/` 安装目录，令模拟 DSH 服务保持不可用，并断言对它的请求数为零；还验证本地会话创建和重置、安全工具、私有回合、控制台设置和提示词保存。测试不连接真实 QQ、DSH 或模型服务。

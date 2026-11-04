@@ -181,7 +181,7 @@ console.log('## qq-bridge 语音系统：控制台与 preset');
 console.log('## 文档');
 {
   const voice = read(path.join('docs', 'guides', 'VOICE.md'));
-  for (const needle of ['built-in console', 'incoming', 'TTS defaults to disabled', 'online consent false', 'requirements-voice.txt']) {
+  for (const needle of ['内置控制台', 'incoming', 'TTS 默认关闭', 'onlineConsent` 默认 `false', 'requirements-voice.txt']) {
     ok(voice.includes(needle), 'docs/guides/VOICE.md 提到「' + needle + '」');
   }
   const readme = read('README.md');

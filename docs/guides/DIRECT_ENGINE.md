@@ -1,52 +1,43 @@
-# Direct provider engine
+# DSH 后端的直连模型引擎（兼容功能）
 
-This optional engine calls an OpenAI-compatible chat/completions provider directly.
-It is only used in `reserved2`. DSH remains the control plane for bridge session
-creation and mode/configuration; this is not a standalone replacement for DSH.
+本文介绍旧 DSH 后端中的可选直连模型引擎，不是默认 Standalone 模式。新安装请先阅读 [独立引擎说明](STANDALONE.md)。
 
-## Configuration
+此功能直接请求 OpenAI 兼容的 `chat/completions` 接口，仅用于二代模式 `reserved2`；DSH 仍负责创建会话以及模式和配置管理，不能替代 DSH。
 
-Keep `dsh.directEngine` false until a provider key has been configured.
+## 配置
 
-Set the key in the environment of the process that starts the bridge:
+未配置模型密钥前，请保持 `dsh.directEngine` 为 `false`。
+
+在启动桥接器的进程环境中设置密钥：
 
 ```powershell
-$env:QQ_DIRECT_API_KEY = '<new provider key>'
+$env:QQ_DIRECT_API_KEY = '<替换为模型提供方密钥>'
 ```
 
-Configure `dsh.directLLM.baseUrl` with the provider API base (normally ending in
-`/v1`, not `/chat/completions`). Alternatively set `QQ_DIRECT_BASE_URL`.
-An explicit `dsh.directLLM.apiKeyEnv` selects a different environment variable.
-Do not put API keys in config.json or source code.
+通过 `dsh.directLLM.baseUrl` 配置接口基础地址，通常以 `/v1` 结尾，而不是 `/chat/completions`；也可设置 `QQ_DIRECT_BASE_URL`。`dsh.directLLM.apiKeyEnv` 可指定其他密钥环境变量。不要将 API Key 写入 `config.json` 或源码。
 
-Without an explicit base URL, `deepseek-official` uses
-`https://api.deepseek.com/v1` and `DEEPSEEK_API_KEY`; `openai-ultrarouter` uses
-`https://ultrarouter.org/v1` and `ULTRAROUTER_API_KEY`. `QQ_DIRECT_API_KEY` overrides
-the key variable. Unknown providers require an explicit base URL. The model
-defaults to `dsh.model`; `dsh.directLLM.model` can override it.
+未明确指定地址时，`deepseek-official` 使用 `https://api.deepseek.com/v1` 和 `DEEPSEEK_API_KEY`；`openai-ultrarouter` 使用 `https://ultrarouter.org/v1` 和 `ULTRAROUTER_API_KEY`。`QQ_DIRECT_API_KEY` 的优先级更高。未知提供方必须明确配置地址。模型默认使用 `dsh.model`，可通过 `dsh.directLLM.model` 覆盖。
 
-Optional settings in `dsh.directLLM`:
+`dsh.directLLM` 的可选设置：
 
-- `requestTimeoutMs`: 90000 by default.
-- `turnTimeoutMs`: 900000, including tool waits.
-- `maxRounds`: 16. Exhaustion is an error, not a successful reply.
-- `maxRetries`: 2. Only transient model HTTP/network failures are retried.
-- `vision`: true. Set false for text-only models.
-- `webSearch`: true. Uses the existing safe, read-only search MCP server.
+- `requestTimeoutMs`：单次请求超时，默认 90000 毫秒。
+- `turnTimeoutMs`：整个回合超时，包含工具等待，默认 900000 毫秒。
+- `maxRounds`：默认 16 轮；达到上限会报错，不算成功回复。
+- `maxRetries`：默认重试 2 次，仅重试临时模型 HTTP 或网络故障。
+- `vision`：默认 `true`；纯文本模型可设为 `false`。
+- `webSearch`：默认 `true`，使用现有安全、只读的搜索 MCP 服务。
 
-## Runtime invariants
+## 运行边界
 
-- Text output is private. Sending always requires an explicit safe QQ tool.
-- Silent/background turns have no QQ sending tools.
-- Tools reuse the existing MCP schemas and bridge authorization/audit checks.
-- The host binds session keys and tokens; models cannot change the target.
-- Displayed snapshot data authorizes read cursors. New arrivals are not
-  automatically acknowledged after a send.
-- Models follow the existing observation gate before closing or sleeping.
-- Each turn has bounded execution, resource cleanup and stale-session checks.
-- Pending wakes are replayed after the direct prompt queue releases its lock.
-- Provider token usage is recorded separately from DSH session baselines.
-- Only tool names/statuses are logged, not prompts, tokens or full tool results.
+- 文本输出保持私有，真实发送始终需要明确调用安全 QQ 工具。
+- 静默或后台回合不提供 QQ 发送工具。
+- 工具复用现有 MCP 参数结构，以及桥接器授权和审计检查。
+- 宿主绑定会话密钥和令牌，模型不能更改目标会话。
+- 只根据已经展示的快照授权读取游标；发送后不会自动确认新到达的消息。
+- 回合结束或睡眠前，模型仍需满足既有观察要求。
+- 每个回合均限制执行时间、清理资源并检查会话是否失效。
+- 直连提示词队列释放锁后，会重放待唤醒任务。
+- 模型 Token 用量与 DSH 会话基线分别记录。
+- 日志仅记录工具名称和状态，不记录提示词、令牌或完整工具结果。
 
-Run `npm run test:direct` for offline regressions, or `npm run test:audit` for the
-full offline suite. These tests do not send real QQ messages or call real models.
+运行 `npm run test:direct` 进行离线回归，或运行 `npm run test:audit` 执行完整离线集合。测试不会发送真实 QQ 消息或调用真实模型。
