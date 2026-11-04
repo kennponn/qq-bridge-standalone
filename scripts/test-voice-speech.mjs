@@ -48,6 +48,16 @@ async function fixture(runTest, { run, probe, audit, config = allowedConfig() } 
 const cacheFiles = root => fs.existsSync(path.join(root, 'state/voice-previews'))
   ? fs.readdirSync(path.join(root, 'state/voice-previews')) : [];
 
+test('discard removes only the selected owned audio and refuses busy previews', () => fixture(async ({ service, root }) => {
+  const first = await service.synthesize('first preview'), second = await service.synthesize('second preview');
+  const gate = deferred(); const sending = service.use(second.id, () => gate.promise);
+  assert.equal(service.discard(second.id), false); assert.equal(fs.existsSync(second.file), true);
+  assert.equal(service.discard(first.id), true); assert.equal(fs.existsSync(first.file), false);
+  assert.equal(service.discard(first.id), false); assert.equal(cacheFiles(root).length, 1);
+  gate.resolve({ ok: true }); await sending; assert.equal(service.discard(second.id), true);
+  assert.deepEqual(cacheFiles(root), []);
+}));
+
 test('random reply percentages default off, persist zero/100 and reject malformed patches atomically', () => {
   assert.equal(resolveVoiceSettings().tts.randomReplyProbability, 0);
   for (const value of [-1, 101, 0.5, '20', null, true, NaN, Infinity]) {

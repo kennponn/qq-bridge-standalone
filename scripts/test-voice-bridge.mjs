@@ -12,7 +12,7 @@ const ADMIN = { 'x-console-token': 'fixture-console-token' };
 const voice = { enabled: true, maxPerMinute: 2, maxPerHour: 10, tts: { enabled: true, onlineConsent: true, voice: 'zh-CN-XiaoxiaoNeural', rate: 0 }, incoming: { enabled: true } };
 const clone = value => JSON.parse(JSON.stringify(value));
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
-async function fixture({ config = {}, roleMode = 'active', hook, fetchImpl } = {}) {
+async function fixture({ config = {}, roleMode = 'active', hook, fetchImpl, duration = 2 } = {}) {
   const calls = { synth: [], health: 0, invalidations: 0, get: [], sends: [] };
   const entries = new Map();
   let gate = hook;
@@ -37,7 +37,7 @@ async function fixture({ config = {}, roleMode = 'active', hook, fetchImpl } = {
             if (!resolveVoiceSettings(getConfig()).tts.onlineConsent) throw Object.assign(new Error('fixture consent revoked'), { statusCode: 409 });
             const id = crypto.randomUUID();
             const file = path.join(root, 'state', id + '.mp3'); fs.writeFileSync(file, 'ID3fixture-only-audio');
-            const entry = { id, file, text: safe, chars: Array.from(safe).length, expiresAt: Date.now() + 600000, duration: 2, used: false, busy: false };
+            const entry = { id, file, text: safe, chars: Array.from(safe).length, expiresAt: Date.now() + 600000, duration, used: false, busy: false };
             entries.set(id, entry); return entry;
           },
           get,
@@ -48,7 +48,8 @@ async function fixture({ config = {}, roleMode = 'active', hook, fetchImpl } = {
             try { const result = await send(entry); calls.sends.push(entry.id); entry.used = true; return result; }
             finally { entry.busy = false; }
           },
-          invalidate() { calls.invalidations++; entries.clear(); }
+          invalidate() { calls.invalidations++; entries.clear(); },
+          discard(id) { const entry = entries.get(id); if (!entry || entry.busy) return false; fs.unlinkSync(entry.file); entries.delete(id); return true; }
         };
       }
     }
@@ -132,6 +133,42 @@ test('AI voice permission and probability save independently without disabling o
 });
 
 const randomConfig = probability => ({ socialV2: { tools: { sendVoice: true }, voice: { ...clone(voice), tts: { ...voice.tts, randomReplyProbability: probability } } } });
+
+test('one to three cleaned characters remain text without synthesis or voice quota', async () => {
+  for (const messages of ['嗯', '好的', '知道了', ' (轻声) 嗯 ', '嗯  嗯']) {
+    const f = await fixture({ config: randomConfig(100) });
+    try { await withServer(f, async port => {
+      const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages } });
+      assert.equal(result.status, 200); assert.equal(result.json.delivery, undefined);
+      assert.equal(f.calls.synth.length, 0); assert.equal(recordRequests(f.h).length, 0);
+      assert.equal(textRequests(f.h).length, 1); assert.equal(f.h.voiceSendTimes.size, 0);
+    }); } finally { await f.close(); }
+  }
+});
+
+test('automatic audio shorter than 1.5 seconds falls back once before dispatch and discards its cache', async () => {
+  for (const duration of [0.8, 1.12, 1.44, NaN]) {
+    const f = await fixture({ config: randomConfig(100), duration });
+    try { await withServer(f, async port => {
+      const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: '这是一段完整的测试回复' } });
+      assert.equal(result.status, 200); assert.equal(result.json.delivery, undefined);
+      assert.equal(f.calls.synth.length, 1); assert.equal(recordRequests(f.h).length, 0);
+      assert.equal(textRequests(f.h).length, 1); assert.equal(f.h.voiceSendTimes.size, 0);
+      assert.equal(f.entries.size, 0); assert.equal(f.h.getSocialV2State('group:456').recentMessages.length, 1);
+    }); } finally { await f.close(); }
+  }
+});
+
+test('1.5-second automatic audio is eligible and short operator speech stays available', async () => {
+  const f = await fixture({ config: randomConfig(100), duration: 1.5 });
+  try { await withServer(f, async port => {
+    const result = await call(port, '/api/socialV2/send-message', { method: 'POST', headers: agentHeaders(f.h), body: { key: 'group:456', messages: '这是一段测试回复' } });
+    assert.equal(result.status, 200); assert.equal(result.json.delivery, 'voice'); assert.equal(recordRequests(f.h).length, 1);
+  }); } finally { await f.close(); }
+  const manual = await fixture({ duration: 0.8 });
+  try { await manual.h.speakText('private:123', { text: '嗯' }); assert.equal(recordRequests(manual.h).length, 1); }
+  finally { await manual.close(); }
+});
 
 test('100% converts group/private normal text endpoints to one verified voice with one context entry', async () => {
   for (const endpoint of ['/api/socialV2/send-message', '/api/socialV2/send-burst', '/api/send/group', '/api/send/private']) {

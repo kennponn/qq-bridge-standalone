@@ -1608,7 +1608,7 @@ async function main() {
     return promise.finally(() => { if (speechSendLanes.get(key) === promise) speechSendLanes.delete(key); });
   }
 
-  async function speakText(key, body, { agent = false, token = '', signal, onSendAttempt, assertAdditionalAllowed } = {}) {
+  async function speakText(key, body, { agent = false, token = '', signal, onSendAttempt, assertAdditionalAllowed, minimumSeconds = 0 } = {}) {
     const target = parseTargetKey(key);
     if (!target) throw Object.assign(new Error('目标格式应为 group:群号 或 private:QQ号'), { statusCode: 400 });
     const epoch = sessionEpoch;
@@ -1633,6 +1633,10 @@ async function main() {
       const entry = body.previewId !== undefined ? speechService.get(body.previewId) : await speechService.synthesize(body.text, {
         ...(agent ? {} : { voice: body.voice, rate: body.rate }), signal, assertAllowed
       });
+      if (minimumSeconds > 0 && !(entry.duration >= minimumSeconds)) {
+        if (body.previewId === undefined) speechService.discard?.(entry.id);
+        throw Object.assign(new Error('自动语音过短，保留原文字回复'), { statusCode: 422, code: 'VOICE_TOO_SHORT' });
+      }
       return speechService.use(entry.id, async selected => {
         assertSpeechTextSafe(selected.text);
         assertAllowed();
@@ -8633,6 +8637,10 @@ async function main() {
     }) : null;
     const text = candidate === null ? null : cleanOnebotMessage(candidate) || null;
     if (text === null) return sendMessagesV2(key, messages, delays, replyToMessageId, atUserId);
+    if (Array.from(text.replace(/\s/g, '')).length < 4) {
+      log(`[voice] ${key} 随机语音保持文字：有效朗读正文不足 4 字符`);
+      return sendMessagesV2(key, messages, delays, replyToMessageId, atUserId);
+    }
     const epoch = sessionEpoch;
     const guard = captureSendGuard(key);
     const probability = resolveVoiceSettings(cfg.socialV2?.voice).tts.randomReplyProbability;
@@ -8659,7 +8667,7 @@ async function main() {
     try {
       validate();
       const result = await speakText(key, { text }, { agent: true, token, signal: controller.signal,
-        onSendAttempt: () => { attempted = true; }, assertAdditionalAllowed: validateVoice });
+        onSendAttempt: () => { attempted = true; }, assertAdditionalAllowed: validateVoice, minimumSeconds: 1.5 });
       log(`[voice] ${key} 随机语音回复已提交（${probability}%），送达${result.verified ? '已确认' : '未确认'}`);
       return Object.assign([text], { voice: result });
     } catch (error) {
@@ -8667,7 +8675,8 @@ async function main() {
       if (attempted) throw Object.assign(new Error('随机语音已尝试提交，但送达未确认；请查看 QQ，不要自动补发或重试'), { statusCode: 502 });
       if (controller.signal.aborted || error?.statusCode === 403 || error?.statusCode === 409) throw error;
       validateVoice();
-      log(`[voice] ${key} 随机语音未提交，改用原文字回复`);
+      log(error?.code === 'VOICE_TOO_SHORT' ? `[voice] ${key} 随机语音音频不足 1.5 秒，改用原文字回复`
+        : `[voice] ${key} 随机语音未提交，改用原文字回复`);
       return await sendMessagesV2(key, messages, delays, replyToMessageId, atUserId, validate);
     } finally {
       clearTimeout(deadline);

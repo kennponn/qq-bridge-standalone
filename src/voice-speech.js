@@ -256,5 +256,10 @@ export function createSpeechService({ root, getConfig, auditText, run = runSpeec
     try { const result = await send(entry); entry.used = true; return result; }
     finally { entry.busy = false; }
   }
-  return { health, synthesize, get, use, invalidate: () => { for (const entry of entries.values()) if (!entry.busy) remove(entry); } };
+  function discard(id) {
+    const entry = entries.get(id);
+    if (!entry || entry.busy) return false;
+    remove(entry); return true;
+  }
+  return { health, synthesize, get, use, discard, invalidate: () => { for (const entry of entries.values()) if (!entry.busy) remove(entry); } };
 }

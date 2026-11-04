@@ -2224,7 +2224,7 @@ button:active:not(:disabled) {
       <div class="row" style="flex-wrap:wrap">
         <label for="voiceRandomProbability" style="flex:1">随机语音回复概率 %</label><input id="voiceRandomProbability" type="number" min="0" max="100" step="1" value="0" aria-describedby="voiceRandomHelp" style="width:85px">
       </div>
-      <div class="meta" id="voiceRandomHelp">0% 关闭随机转换，100% 将符合条件的回复都改成语音。二代仿真每次单条短文字回复抽一次；引用、@、链接、代码、长文本和连发多条保留文字。须允许 AI 发语音、启用在线朗读并同意服务，保存后生效；不在空闲时自行发消息。命中只发语音，不重复发文字；仅在语音尚未提交的合成失败时退回文字，仍受语音频率限制。</div>
+      <div class="meta" id="voiceRandomHelp">0% 关闭随机转换，100% 将符合条件的回复都改成语音。二代仿真每次单条短文字回复抽一次；引用、@、链接、代码、长文本和连发多条保留文字。有效正文不足 4 字符不合成；自动音频不足 1.5 秒改用原文字，避免一秒语音。须允许 AI 发语音、启用在线朗读并同意服务，保存后生效；不在空闲时自行发消息。命中只发语音，不重复发文字；仅在语音尚未提交的合成失败时退回文字，仍受语音频率限制。</div>
       <div class="row"><button id="voiceSettingsSave" type="button" class="small">保存语音设置</button><button id="voiceSettingsRefresh" type="button" class="small">刷新语音状态</button><span id="voiceSettingsStatus" class="meta" role="status" aria-live="polite">读取中…</span></div>
       <label for="voiceTtsText">试听／发送内容（最多 300 字符）</label>
       <textarea id="voiceTtsText" maxlength="300" rows="3" placeholder="输入想试听的文字，试听不会发到 QQ。" style="min-height:90px"></textarea>
