@@ -49,7 +49,7 @@ function fixture(overrides = {}) {
     spawn: (file, args, options) => {
       calls.spawn.push({ file, args, options });
       child = new EventEmitter();
-      child.pid = 900000 + sequence;
+      child.pid = overrides.childPid ?? 900000 + sequence;
       child.unref = () => { child.unrefCalled = true; };
       alive.add(child.pid);
       child.once('exit', () => alive.delete(child.pid));
@@ -105,6 +105,21 @@ test('startup uses only fixed absolute bundled executables without a shell or vi
   assert.equal(call.options.stdio, 'ignore');
   assert.equal(f.child.unrefCalled, true);
   assert.equal(JSON.parse(fs.readFileSync(f.receiptFile, 'utf8')).childPid, f.child.pid);
+});
+
+test('short child PIDs truncate the original null value without leaving corrupt JSON', async () => {
+  for (const pid of [7, 83, 836, 4242, 42424]) {
+    const f = fixture({ childPid: pid });
+    const result = await f.create().start();
+    assert.equal(result.started, true);
+    const raw = fs.readFileSync(f.receiptFile, 'utf8');
+    const receipt = JSON.parse(raw);
+    assert.equal(receipt.childPid, pid);
+    assert.equal(fs.statSync(f.receiptFile).size, Buffer.byteLength(JSON.stringify(receipt)));
+    assert.equal((await f.create().start()).alreadyRunning, true);
+    assert.equal(f.calls.spawn.length, 1);
+    f.child.emit('exit', 0, null);
+  }
 });
 
 test('default and false auto-load do not attach all open QQ clients; consent and Node injection env are removed', async () => {
@@ -570,7 +585,7 @@ test('receipt-write failures after spawn keep listeners, unref and duplicate pro
   const f = fixture();
   const guardedFs = new Proxy(fs, { get(base, key) {
     if (key === 'writeFileSync') return (file, content, options) => {
-      if (file === f.receiptFile && options?.flag === 'r+') throw new Error('synthetic receipt write error');
+      if (file === f.receiptFile && options?.flag === 'w') throw new Error('synthetic receipt write error');
       return base.writeFileSync(file, content, options);
     };
     return base[key];

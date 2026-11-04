@@ -16,5 +16,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:snowluma-launcher
       - run: npm run test:voice
       - run: npm run release:check

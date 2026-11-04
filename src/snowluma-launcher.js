@@ -251,7 +251,8 @@ export function createSnowLumaLauncher({
     const current = readReceipt(lock.location);
     if (current?.id !== lock.receipt.id) throw failure('STATE_UNAVAILABLE');
     lock.receipt.childPid = pid;
-    fs.writeFileSync(lock.location.file, JSON.stringify(lock.receipt), { flag: 'r+', mode: 0o600 });
+    // Short numeric PIDs must truncate the old null value instead of leaving trailing JSON.
+    fs.writeFileSync(lock.location.file, JSON.stringify(lock.receipt), { flag: 'w', mode: 0o600 });
   }
 
   function readWebuiConfiguration(home) {
