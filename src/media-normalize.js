@@ -1,17 +1,17 @@
-// 媒体归一化：把「QQ 给我们的原始图片」压成「DSH 与模型真能吃下的形状」。
+
 //
 // ── 为什么需要这一层（2026-10-18 审计结论，见 docs/audits/AUDIT_2026-10-18_MEDIA_AND_WATERMARK.md）
 //
-// ① 体积悬崖：DSH 的 MCP 图片入口会用正则校验 base64
-//    （dsh-mcp-client 的 CANONICAL_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:…)?$/）。
+
+
 //    这条正则在长输入上会压爆 V8 的 regexp 回溯栈，实测：
 //        base64 ≥ 4,474,880 字符（原始字节 ≥ 3.20 MiB）→ RangeError: Maximum call stack size exceeded
-//    而 DSH 把这个异常原样降级成 `[image unavailable: image/gif; Maximum call stack size exceeded; …]`
+
 //    —— 模型只看到一行错误，图一个字节都没进上下文。
 //    桥接侧的抓取上限（socialV2.media.maxBytes，默认 8 MiB）远在这条线之上，
-//    于是「3.2–8 MiB 的图」就成了「桥接认为合法、DSH 必然拒绝」的死区。
+
 //
-// ② 动图变单帧：DSH 的 canPassThroughNormalization() 显式排除 image/gif，
+
 //    一律交给 sharp 归一化，而 sharp 默认只解 page 0 —— 一张 48 帧、4.8 MB 的动图，
 //    模型最终只看到「第 1 帧压成的 12 KB 静态 JPEG」，而且上下文里没有任何「这是动图」的提示。
 //    模型于是只能瞎猜（实测会话里它连着两次给出的解释都是错的）。
@@ -21,10 +21,10 @@
 // · **只动喂给模型的那一份**。收集表情（add_custom_face）必须用原始字节，
 //   所以归一化只接在 fetchMediaData / resolveMediaList / sticker-image 这些「给模型看」的出口，
 //   不去改 fetchOneBotImage / fetchFaceMedia 的返回值。
-// · **动图抽帧拼图**而不是发多张图：一条消息 5 张图 = 5 次 DSH admission + 5 份 token，
+
 //   而 3×2 拼图信息密度更高、只算一张图（实测 4.83 MB / 200 帧 → 92 KB / 269 ms）。
 // · **能不动就不动**：小图（≤ maxModelBytes 且长边够小）原样放行，零延迟。
-// · **ffmpeg 缺失也不硬塞**：超线又压不动的，宁可回一句「太大，看不了」，也不发注定被 DSH 丢掉
+
 //   的字节（那样模型只会看到一行看不懂的错误）。
 //
 // 依赖：只用 node 内置 + voice-core 的 resolveFfmpeg（ffmpeg 定位的唯一实现）。
@@ -38,7 +38,7 @@ import { resolveFfmpeg } from './voice-core.js';
 
 /** 默认值集中一处，bridge.js 只做 config 覆盖（见 modelMediaLimits）。 */
 export const MEDIA_DEFAULTS = Object.freeze({
-  // 交给 DSH 的单张图片原始字节上限。DSH 的炸栈线是 ≈3.20 MiB，
+
   // 这里取 1 MiB：留 3 倍余量，顺带把 token 成本压一个数量级（1 MiB 图 ≈ 1.33 MB base64）。
   maxModelBytes: 1024 * 1024,
   // 长边上限：手机直出 4000×3000 缩到 1280 后约 150–250 KB，肉眼描述完全够用。
@@ -51,7 +51,7 @@ export const MEDIA_DEFAULTS = Object.freeze({
   timeoutMs: 25000
 });
 
-/** 硬上限：不管 config 怎么写，都不允许超过 DSH 的实测炸栈线下沿。 */
+
 const HARD_MAX_MODEL_BYTES = Math.floor(3.0 * 1024 * 1024);
 
 // ── 格式探测（纯函数，可单测） ────────────────────────────────────────────
@@ -336,15 +336,7 @@ function readIfExists(file) {
 
 // ── 主入口 ──────────────────────────────────────────────────────────────
 
-/**
- * 把一张图整理成「可以安全交给 DSH / 模型」的形态。
- *
- * @param buf       原始字节
- * @param mimeType  调用方已知的 MIME（可能与实际不符，以字节探测为准）
- * @param opts      { maxModelBytes, maxLongEdge, gifFrames, gifTile, enabled, ffmpegPath, tmpDir, label, timeoutMs }
- * @returns {Promise<{ok:boolean, buffer?:Buffer, mimeType?:string, note?:string, error?:string, skipped?:boolean}>}
- *   ok=false 只在「超大且压不动」时出现；调用方应把它变成一句可读的失败原因，而不是发空图。
- */
+
 export async function normalizeImageForModel(buf, mimeType, opts = {}) {
   const bytes = Buffer.isBuffer(buf) ? buf.length : 0;
   if (!bytes) return { ok: false, error: '图片字节为空' };
@@ -432,7 +424,7 @@ export async function normalizeImageForModel(buf, mimeType, opts = {}) {
       }
       edge = Math.max(320, Math.round(edge * 0.7));
     }
-    // 压不动：小图照发，大图明确拒绝（绝不发注定被 DSH 丢掉的东西）。
+
     if (bytes <= maxBytes) return { ok: true, buffer: buf, mimeType, note: `压缩失败（${lastError}），按原图提供` };
     return { ok: false, error: `${(bytes / 1024 / 1024).toFixed(2)}MB 压不到 ${(maxBytes / 1024).toFixed(0)}KB 以内（${lastError}）` };
   } finally {

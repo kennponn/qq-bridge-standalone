@@ -71,6 +71,7 @@ for (const file of files) {
   if (forbidden.test(rel)) { issues.push(`${rel}: forbidden private/runtime artifact`); continue; }
   const absolute = path.resolve(root, file);
   if (!absolute.startsWith(path.resolve(root) + path.sep)) { issues.push(`${rel}: path escape`); continue; }
+  if (!fs.existsSync(absolute)) continue; // Tracked deletions in a development worktree.
   const stat = fs.lstatSync(absolute);
   if (stat.isSymbolicLink()) { issues.push(`${rel}: symbolic link`); continue; }
   if (stat.size > 5 * 1024 * 1024) { issues.push(`${rel}: oversized source artifact`); continue; }
@@ -94,7 +95,7 @@ for (const file of files) {
 }
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.example.json'), 'utf8'));
 if (config.ownerQQ !== null || config.allowAllWhenEmpty !== false || config.allow?.groups?.length || config.allow?.private?.length) issues.push('config.example.json: unsafe identity/allowlist defaults');
-if (config.consoleToken || config.snowluma?.accessToken || config.dsh?.authToken) issues.push('config.example.json: nonempty administrative credential');
+if (config.consoleToken || config.snowluma?.accessToken) issues.push('config.example.json: nonempty administrative credential');
 if (config.socialV2?.voice?.tts?.enabled !== false || config.socialV2?.voice?.tts?.onlineConsent !== false) issues.push('config.example.json: online speech must default off without consent');
 for (const required of ['README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'roles/assistant.md', 'docs/PUBLISHING.md', 'docs/guides/VOICE.md', '.github/workflows/ci.yml']) {
   if (!files.map(slash).includes(required)) issues.push(`${required}: missing public release file`);

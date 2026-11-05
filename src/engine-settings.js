@@ -5,7 +5,6 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { hardenFile, icacls, isHardened } from './state-acl.mjs';
 
 const PROVIDERS = new Set(['deepseek-official', 'openai-ultrarouter', 'openai-compatible']);
-const BACKENDS = new Set(['dsh', 'standalone']);
 const FIELDS = new Set(['provider', 'model', 'baseUrl', 'apiKeyEnv', 'requestTimeoutMs', 'turnTimeoutMs', 'maxRounds', 'maxRetries', 'vision', 'webSearch']);
 const LIMITS = { requestTimeoutMs: [1000, 300000], turnTimeoutMs: [1000, 1500000], maxRounds: [1, 40], maxRetries: [0, 3] };
 const DEFAULTS = { requestTimeoutMs: 90000, turnTimeoutMs: 900000, maxRounds: 16, maxRetries: 2, vision: true, webSearch: true };
@@ -57,18 +56,16 @@ function validKey(value) {
 
 function editableEngineSettings(cfg = {}) {
   const engine = object(cfg.engine) ? cfg.engine : {};
-  const migrated = !object(engine.directLLM);
-  const legacy = object(cfg.dsh) ? cfg.dsh : {};
-  const options = migrated ? (object(legacy.directLLM) ? legacy.directLLM : {}) : engine.directLLM;
-  const providerValue = options.provider || (migrated ? legacy.provider : '') || 'deepseek-official';
+  const options = object(engine.directLLM) ? engine.directLLM : {};
+  const providerValue = options.provider || 'deepseek-official';
   const provider = PROVIDERS.has(providerValue) ? providerValue : 'openai-compatible';
   const defaults = PROVIDER_DEFAULTS[provider];
   const safe = (resolve, value, fallback) => { try { return resolve(value); } catch { return fallback; } };
   return {
-    backend: BACKENDS.has(engine.backend) ? engine.backend : 'dsh',
+    backend: 'standalone',
     directLLM: {
       provider,
-      model: safe(modelName, options.model || (migrated ? legacy.model : '') || (provider === 'deepseek-official' ? 'deepseek-chat' : ''), provider === 'deepseek-official' ? 'deepseek-chat' : ''),
+      model: safe(modelName, options.model || (provider === 'deepseek-official' ? 'deepseek-chat' : ''), provider === 'deepseek-official' ? 'deepseek-chat' : ''),
       baseUrl: safe(apiBase, options.baseUrl || defaults.baseUrl, defaults.baseUrl),
       apiKeyEnv: safe(keyEnvName, options.apiKeyEnv || defaults.apiKeyEnv, defaults.apiKeyEnv),
       ...Object.fromEntries(Object.entries(LIMITS).map(([key, [min, max]]) => [key, bounded(options[key], DEFAULTS[key], min, max)])),
@@ -80,18 +77,15 @@ function editableEngineSettings(cfg = {}) {
 
 export function resolveEngineSettings(cfg = {}) {
   const engine = object(cfg.engine) ? cfg.engine : {};
-  const migrated = !object(engine.directLLM);
-  const legacy = object(cfg.dsh) ? cfg.dsh : {};
-  const options = migrated ? (object(legacy.directLLM) ? legacy.directLLM : {}) : engine.directLLM;
-  const providerValue = options.provider || (migrated ? legacy.provider : '') || 'deepseek-official';
-  const provider = PROVIDERS.has(providerValue) ? providerValue : (migrated ? 'openai-compatible' : providerValue);
+  const options = object(engine.directLLM) ? engine.directLLM : {};
+  const providerValue = options.provider || 'deepseek-official';
+  const provider = PROVIDERS.has(providerValue) ? providerValue : providerValue;
   if (!PROVIDERS.has(provider)) throw fail('provider must be deepseek-official, openai-ultrarouter or openai-compatible');
-  const backend = engine.backend ?? 'dsh';
-  if (!BACKENDS.has(backend)) throw fail('backend must be dsh or standalone');
+  const backend = resolveEngineBackend(cfg, {});
   const defaults = PROVIDER_DEFAULTS[provider];
   const directLLM = {
     provider,
-    model: modelName(options.model || (migrated ? legacy.model : '') || (provider === 'deepseek-official' ? 'deepseek-chat' : '')),
+    model: modelName(options.model || (provider === 'deepseek-official' ? 'deepseek-chat' : '')),
     baseUrl: apiBase(options.baseUrl || defaults.baseUrl),
     apiKeyEnv: keyEnvName(options.apiKeyEnv || defaults.apiKeyEnv),
     ...Object.fromEntries(Object.entries(LIMITS).map(([key, [min, max]]) => [key, bounded(options[key], DEFAULTS[key], min, max)])),
@@ -102,9 +96,9 @@ export function resolveEngineSettings(cfg = {}) {
 }
 
 export function resolveEngineBackend(cfg, env = process.env) {
-  const backend = env.QQ_BRIDGE_ENGINE || (object(cfg?.engine) ? cfg.engine.backend : undefined) || 'dsh';
-  if (!BACKENDS.has(backend)) throw fail('QQ_BRIDGE_ENGINE must be dsh or standalone');
-  return backend;
+  const backend = env.QQ_BRIDGE_ENGINE || cfg?.engine?.backend || 'standalone';
+  if (backend !== 'standalone') throw fail('only standalone is supported; configure engine.directLLM in the model settings panel');
+  return 'standalone';
 }
 
 function credential(settings, env, storedApiKey) {
@@ -131,43 +125,27 @@ export function resolveEngineDirectConfig(cfg, { env = process.env, storedApiKey
   return { ...options, baseURL, apiKey: key.apiKey };
 }
 
-export function getEngineStatus({ cfg, runtimeBackend, storedApiKey, env = process.env, dshReady = false, activeTurns } = {}) {
-  const result = { ok: true, backend: 'dsh', runtimeBackend: runtimeBackend || 'dsh', requiresRestart: false, ready: false, dshRequired: runtimeBackend !== 'standalone', config: {}, secret: { configured: false, source: 'none' } };
+export function getEngineStatus({ cfg, storedApiKey, env = process.env, activeTurns } = {}) {
+  const result = { ok: true, backend: 'standalone', runtimeBackend: 'standalone', requiresRestart: false,
+    ready: false, config: editableEngineSettings(cfg).directLLM, secret: { configured: false, source: 'none' } };
   if (Number.isSafeInteger(activeTurns) && activeTurns >= 0) result.activeTurns = activeTurns;
   try {
-    const settings = resolveEngineSettings(cfg);
-    Object.assign(result, { backend: settings.backend, config: settings.directLLM });
-    result.runtimeBackend = runtimeBackend || resolveEngineBackend(cfg, env);
-    if (!BACKENDS.has(result.runtimeBackend)) throw fail('runtime backend must be dsh or standalone');
-    result.requiresRestart = result.backend !== result.runtimeBackend;
-    result.dshRequired = result.runtimeBackend === 'dsh';
-    result.ready = result.runtimeBackend === 'dsh' && dshReady === true;
-    try {
-      const baseURL = apiBase(env.QQ_DIRECT_BASE_URL || settings.directLLM.baseUrl);
-      const key = credential({ ...settings.directLLM, baseUrl: baseURL }, env, storedApiKey);
-      result.secret = { configured: Boolean(key.apiKey), source: key.source };
-      if (result.runtimeBackend === 'standalone') {
-        resolveEngineDirectConfig(cfg, { env, storedApiKey });
-        result.ready = true;
-      }
-      if (!key.apiKey) result.error = key.error;
-    } catch (error) {
-      result.error = /^ENGINE_CONFIG: /.test(error?.message || '') ? error.message : 'ENGINE_CONFIG: engine is not ready';
-    }
+    resolveEngineBackend(cfg, env);
+    result.config = resolveEngineSettings(cfg).directLLM;
   } catch (error) {
     result.ok = false;
     result.error = /^ENGINE_CONFIG: /.test(error?.message || '') ? error.message : 'ENGINE_CONFIG: invalid engine configuration';
-    const editable = editableEngineSettings(cfg);
-    result.backend = editable.backend;
-    result.config = editable.directLLM;
-    result.runtimeBackend = BACKENDS.has(runtimeBackend) ? runtimeBackend : editable.backend;
-    result.requiresRestart = result.backend !== result.runtimeBackend;
-    result.dshRequired = result.runtimeBackend === 'dsh';
-    result.ready = result.dshRequired && dshReady === true;
-    try {
-      const key = credential({ ...editable.directLLM, baseUrl: apiBase(env.QQ_DIRECT_BASE_URL || editable.directLLM.baseUrl) }, env, storedApiKey);
-      result.secret = { configured: Boolean(key.apiKey), source: key.source };
-    } catch {}
+  }
+  try {
+    const baseUrl = apiBase(env.QQ_DIRECT_BASE_URL || result.config.baseUrl);
+    const key = credential({ ...result.config, baseUrl }, env, storedApiKey);
+    result.secret = { configured: Boolean(key.apiKey), source: key.source };
+    if (result.ok) {
+      resolveEngineDirectConfig(cfg, { env, storedApiKey });
+      result.ready = true;
+    }
+  } catch (error) {
+    result.error ||= /^ENGINE_CONFIG: /.test(error?.message || '') ? error.message : 'ENGINE_CONFIG: engine is not ready';
   }
   return result;
 }
@@ -176,7 +154,7 @@ export function applyEngineSettingsPatch(cfg, patch) {
   ownObject(cfg, 'configuration');
   ownObject(patch, 'patch');
   for (const key of Object.keys(patch)) if (!['backend', 'config', 'apiKey', 'clearApiKey'].includes(key)) throw fail('unknown engine update field');
-  if ('backend' in patch && !BACKENDS.has(patch.backend)) throw fail('backend must be dsh or standalone');
+  if ('backend' in patch && patch.backend !== 'standalone') throw fail('only standalone is supported');
   if ('clearApiKey' in patch && typeof patch.clearApiKey !== 'boolean') throw fail('clearApiKey must be boolean');
   if ('apiKey' in patch && typeof patch.apiKey !== 'string') throw fail('apiKey must be a string');
   if (patch.apiKey) validKey(patch.apiKey);
@@ -267,7 +245,7 @@ async function replaceTemp(temp, target) {
 }
 
 const saving = new Set();
-export async function updateEngineSettings({ configPath, secretPath, cfg, patch, env = process.env, runtimeBackend, dshReady, activeTurns }) {
+export async function updateEngineSettings({ configPath, secretPath, cfg, patch, env = process.env, activeTurns }) {
   const target = path.resolve(configPath);
   if (saving.has(target)) throw fail('another engine settings update is in progress');
   saving.add(target);
@@ -298,7 +276,7 @@ export async function updateEngineSettings({ configPath, secretPath, cfg, patch,
       if (rollbackTemp) { await replaceTemp(rollbackTemp, target); rollbackTemp = undefined; }
       throw error;
     }
-    return { config: merged, status: getEngineStatus({ cfg: merged, runtimeBackend, storedApiKey: stored, env, dshReady, activeTurns }) };
+    return { config: merged, status: getEngineStatus({ cfg: merged, storedApiKey: stored, env, activeTurns }) };
   } finally {
     for (const temp of [configTemp, secretTemp, rollbackTemp].filter(Boolean)) try { fs.unlinkSync(temp); } catch {}
     saving.delete(target);

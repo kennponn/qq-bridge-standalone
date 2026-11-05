@@ -11,8 +11,8 @@
 // 桥接读不到自己的控制台令牌（"Access to the path ... is denied"），而启动日志只报
 // 「未能收紧权限」，完全看不出已经造成了破坏。
 //
-// 第二个 bug 让第一个 bug 反复发生：回读自检用 `/\(I\)/.test(整段输出)` 判断「继承链是否
-// 断干净」。但 DSH 的 ACL 沙箱会把工作区（含 state/）标记为 Low 完整性，而
+// 回读自检只判断权限 ACE，不能把完整性标签里的继承标记误当权限继承。
+//
 // `Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)` 这一行**永远**带 (I) ——
 // 于是「已收紧」被误判成「未收紧」，**每次启动都重跑一遍那个破坏性命令**。
 //
@@ -36,12 +36,7 @@ export function icacls(args, timeout = 30000) {
   return spawnSync('icacls', args, { encoding: 'utf8', timeout, windowsHide: true });
 }
 
-/**
- * icacls 输出里是否还有**继承来的权限** ACE。
- *
- * 必须排除 Mandatory Label 行：那不是权限，而且 DSH 沙箱打过 Low 标签后它永远带 (I)。
- * 用全文 `/\(I\)/` 扫描会把「已收紧」判成「未收紧」，进而让调用方反复重跑破坏性命令。
- */
+
 export function hasInheritedPermissionAce(icaclsOutput) {
   return String(icaclsOutput ?? '')
     .split(/\r?\n/)

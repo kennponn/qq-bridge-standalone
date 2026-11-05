@@ -29,7 +29,7 @@ const pages = [...new Set([...html.matchAll(/data-page="([a-z0-9-]+)"/g)].map((m
 ok(JSON.stringify(views) === JSON.stringify(pages), 'data-view 与 data-page 一一对应', `${views.length} 个：${views.join(', ')}`);
 
 console.log('## 工具开关');
-const tools = [...html.matchAll(/data-v2-tool="([A-Za-z]+)"/g)].map((m) => m[1]);
+const tools = [...html.matchAll(/<input\b[^>]*data-v2-tool="([A-Za-z]+)"/g)].map((m) => m[1]);
 ok(tools.includes('sendVoice'), 'sendVoice 开关存在', `共 ${tools.length} 个开关`);
 ok(new Set(tools).size === tools.length, '工具开关无重复');
 
@@ -70,8 +70,7 @@ if (!hasVoiceTool()) {
 
 console.log('## fixture mock 覆盖');
 const fixture = fs.readFileSync(path.join(ROOT, 'scripts', 'console-ui-fixture.mjs'), 'utf8');
-ok(fixture.includes("case '/api/socialV2/voices'"), 'fixture mock 了 /api/socialV2/voices');
-ok(fixture.includes("case '/api/voice/send'"), 'fixture mock 了 /api/voice/send');
+ok(fixture.includes('bridgeHarness'), 'fixture uses isolated real handlers');
 
 console.log(bad === 0 ? '\n全部通过' : `\n${bad} 项失败`);
 if (bad > 0) process.exit(1);

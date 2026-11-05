@@ -350,7 +350,7 @@ export async function safeFetch(urlString, maxChars = 50000) {
   throw new Error('重定向次数过多，已停止');
 }
 
-/** 仅接受 DSH 支持的四种图片格式：PNG/JPEG/GIF/WebP。 */
+
 export function looksLikeImageBuffer(buf) {
   if (!buf || buf.length < 12) return false;
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;

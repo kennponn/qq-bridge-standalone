@@ -6,7 +6,7 @@
 //   - src/bridge.js：自己管白名单/限流/审计，但音频解析与 ffprobe 探测复用这里
 //
 // 关键设计：ffprobe 结果**写临时文件**而不是走 stdout 管道。
-// 在受限沙箱（DSH workspace-write / 只读模式）里 spawn 一个 stdio:pipe 的子进程会直接
+
 // EPERM，而"继承 stdio + 写文件"是允许的。
 import fs from 'node:fs';
 import os from 'node:os';

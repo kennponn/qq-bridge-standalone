@@ -9,7 +9,6 @@
 | `roles/其他角色名.md` | 自己的私人人格，默认忽略 | 否 |
 | `roles/local/` | 私人备份，不是默认加载目录 | 否 |
 | `scripts/` | 安装、离线测试和发布检查 | 是 |
-| `dsh/`、`plugins/` | 可选 DSH 兼容预设和守卫 | 是 |
 | `config.example.json` | 安全占位配置 | 是 |
 | `config.json` | 本机配置、账号和访问令牌 | 否 |
 | `state/` | 会话、密钥、记忆、日志和用量 | 否 |

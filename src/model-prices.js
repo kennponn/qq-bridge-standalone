@@ -1,6 +1,6 @@
 // DeepSeek 官方价目表与峰谷分时判定（桥接侧自行维护）。
 //
-// 为什么放在桥接里：DSH 自身不做任何货币换算（`dsh-llm-pi-ai` 明写 "no consumer reports
+
 // spend"），provider 只回 token 数。所以「花多少钱」必须由消费方用价目表算。
 //
 // 口径（与官方文档一致，单位：元 / 百万 token）：
@@ -10,7 +10,7 @@
 //   高峰时段 = 北京时间周一至周五 9:00-12:00、14:00-18:00，且不含中国法定节假日；
 //   其余时段（含周末与法定节假日全天）均为空闲时段。
 //
-// 注意 `dsh` 报的 token 桶是**互不重叠**的：
+
 //   计费输入 = inputTokens(未命中) + cacheReadTokens + cacheWriteTokens
 // 所以三个桶要分别计价再相加，不能把 cacheRead 当成 inputTokens 的一部分。
 //
@@ -202,14 +202,7 @@ export function ratesAt(model, atMs, table = DEFAULT_PRICE_TABLE) {
   };
 }
 
-/**
- * 把 usage 归一化成四个互不重叠的计费桶。
- *
- * 同时接受两种键名，这一点是**必须**的：
- *   - DSH 原始口径：`inputTokens` / `cacheReadTokens` / `cacheWriteTokens` / `outputTokens`；
- *   - 账本落盘口径：`cacheMiss` / `cacheHit` / `cacheWrite` / `output`。
- * 只认一种会在「写盘 → 重新载入」时把桶读成 0（花费凭空少一截），所以两种都读。
- */
+
 export function normalizeUsage(usage) {
   const pick = (value, ...keys) => {
     for (const key of keys) {
@@ -222,7 +215,7 @@ export function normalizeUsage(usage) {
     return { cacheMiss: 0, cacheHit: 0, cacheWrite: 0, output: 0, reasoning: 0 };
   }
   return {
-    // DSH 的 inputTokens 是「未命中」部分，不是总输入。
+
     cacheMiss: pick(usage, 'cacheMiss', 'uncachedInputTokens', 'inputTokens'),
     cacheHit: pick(usage, 'cacheHit', 'cacheReadTokens'),
     cacheWrite: pick(usage, 'cacheWrite', 'cacheWriteTokens'),

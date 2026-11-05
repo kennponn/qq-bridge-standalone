@@ -13,7 +13,7 @@ import {
   updateEngineSettings, testEngineConnection
 } from '../src/engine-settings.js';
 
-const config = () => ({ dsh: { provider: 'openai-ultrarouter', model: 'fixture-model', directEngine: false }, allow: { groups: [42] }, socialV2: { enabled: true }, unrelated: { fixture: true } });
+const config = () => ({ engine: { backend: 'standalone', directLLM: { provider: 'openai-ultrarouter', model: 'fixture-model' } }, allow: { groups: [42] }, socialV2: { enabled: true }, unrelated: { fixture: true } });
 const standalone = () => applyEngineSettingsPatch(config(), { backend: 'standalone' });
 const scoped = (cfg = standalone(), apiKey = 'fixture-secret-only') => {
   const { directLLM } = resolveEngineSettings(cfg);
@@ -21,33 +21,27 @@ const scoped = (cfg = standalone(), apiKey = 'fixture-secret-only') => {
 };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 
-test('legacy configuration remains DSH and migrates without activating direct mode', () => {
-  const cfg = config();
-  cfg.dsh.directEngine = true;
-  const resolved = resolveEngineSettings(cfg);
-  assert.equal(resolved.backend, 'dsh');
-  assert.equal(resolved.directLLM.provider, 'openai-ultrarouter');
-  assert.equal(resolved.directLLM.baseUrl, 'https://ultrarouter.org/v1');
-  assert.equal(resolved.directLLM.model, 'fixture-model');
-  assert.equal(resolveEngineBackend(cfg, {}), 'dsh');
-  assert.equal(resolveEngineBackend(cfg, { QQ_BRIDGE_ENGINE: 'standalone' }), 'standalone');
-  assert.throws(() => resolveEngineBackend(cfg, { QQ_BRIDGE_ENGINE: 'direct' }), /QQ_BRIDGE_ENGINE/);
-  cfg.dsh.directLLM = { baseUrl: 'not-a-valid-url' };
-  assert.equal(resolveEngineBackend(cfg, {}), 'dsh');
-  assert.equal(resolveEngineBackend({ engine: { backend: 'dsh', directLLM: { provider: 'invalid' } } }, {}), 'dsh');
-  assert.throws(() => resolveEngineBackend({ engine: { backend: 'invalid' } }, {}), /QQ_BRIDGE_ENGINE/);
+test('legacy backend cannot be selected and legacy credentials are never used', () => {
+  const legacy = { dsh: { provider: 'openai-ultrarouter', model: 'old-model', authToken: 'fixture-old-key', directLLM: { baseUrl: 'https://old.invalid/v1' } } };
+  assert.equal(resolveEngineBackend(legacy, {}), 'standalone');
+  assert.equal(resolveEngineSettings(legacy).directLLM.provider, 'deepseek-official');
+  assert.notEqual(resolveEngineSettings(legacy).directLLM.model, 'old-model');
+  assert.throws(() => resolveEngineDirectConfig(legacy, { env: {} }), /Configure an API key/);
+  for (const backend of ['dsh', 'direct', 'invalid']) {
+    assert.throws(() => resolveEngineBackend({ engine: { backend } }, {}), /only standalone/);
+    assert.throws(() => resolveEngineBackend({}, { QQ_BRIDGE_ENGINE: backend }), /only standalone/);
+    assert.throws(() => applyEngineSettingsPatch({}, { backend }), /only standalone/);
+  }
+  assert.equal(getEngineStatus({ cfg: { engine: { backend: 'dsh' } }, env: {} }).ready, false);
+  assert.equal(applyEngineSettingsPatch({ engine: { backend: 'dsh' } }, { backend: 'standalone' }).engine.backend, 'standalone');
 });
 
 test('UI save materializes independent model config and preserves other fields', () => {
   const original = config();
   const next = applyEngineSettingsPatch(original, { backend: 'standalone', config: { model: 'my-fixture' } });
-  assert.equal(original.engine, undefined);
+  assert.equal(original.engine.directLLM.model, 'fixture-model');
   assert.deepEqual(next.allow, original.allow);
   assert.deepEqual(next.socialV2, original.socialV2);
-  assert.deepEqual(next.dsh, original.dsh);
-  next.dsh.provider = 'deepseek-official';
-  next.dsh.model = 'unrelated-new-dsh-model';
-  next.dsh.directLLM = { baseUrl: 'https://legacy.invalid/v1' };
   const settings = resolveEngineSettings(next);
   assert.equal(settings.directLLM.provider, 'openai-ultrarouter');
   assert.equal(settings.directLLM.model, 'my-fixture');
@@ -112,31 +106,26 @@ test('stored credentials never silently cross provider or endpoint boundaries', 
   assert.throws(() => resolveEngineDirectConfig(cfg, { env: { QQ_DIRECT_BASE_URL: 'https://override.invalid/v1' }, storedApiKey: old }), /different provider/);
 });
 
-test('status distinguishes configured backend, running backend, key and DSH readiness', () => {
+test('status reports only the local engine and never echoes credentials', () => {
   const cfg = standalone();
-  const status = getEngineStatus({ cfg, runtimeBackend: 'dsh', dshReady: true, storedApiKey: scoped(cfg), env: {}, activeTurns: 2 });
+  const status = getEngineStatus({ cfg, storedApiKey: scoped(cfg), env: {}, activeTurns: 2 });
   assert.equal(status.backend, 'standalone');
-  assert.equal(status.runtimeBackend, 'dsh');
-  assert.equal(status.requiresRestart, true);
-  assert.equal(status.dshRequired, true);
+  assert.equal(status.runtimeBackend, 'standalone');
   assert.equal(status.ready, true);
+  assert.equal(status.requiresRestart, false);
   assert.equal(status.activeTurns, 2);
   assert.equal(status.secret.configured, true);
   assert.equal(status.config.model, 'fixture-model');
   assert.ok(!JSON.stringify(status).includes('fixture-secret-only'));
-  const direct = getEngineStatus({ cfg, runtimeBackend: 'standalone', dshReady: false, storedApiKey: scoped(cfg), env: {} });
-  assert.equal(direct.ready, true);
-  assert.equal(direct.dshRequired, false);
-  assert.equal(direct.requiresRestart, false);
-  const missing = getEngineStatus({ cfg, runtimeBackend: 'standalone', env: {} });
+  assert.ok(!('dshRequired' in status));
+  const missing = getEngineStatus({ cfg, env: {} });
   assert.equal(missing.ready, false);
   assert.equal(missing.ok, true);
-  assert.equal(getEngineStatus({ cfg, runtimeBackend: 'dsh', dshReady: true, env: { QQ_DIRECT_API_KEY: 'invalid\nkey' } }).ready, true);
-  assert.equal(getEngineStatus({ cfg: { engine: { backend: 'invalid' } }, env: {} }).ok, false);
+  assert.equal(getEngineStatus({ cfg, env: { QQ_DIRECT_API_KEY: 'invalid\nkey' } }).ready, false);
 });
 
 test('settings and strict updates accept cross-realm plain fixture objects', () => {
-  const cfg = vm.runInNewContext('({ dsh: { provider: "openai-ultrarouter", model: "cross-realm-model" } })');
+  const cfg = vm.runInNewContext('({ engine: { directLLM: { provider: "openai-ultrarouter", model: "cross-realm-model" } } })');
   const patch = vm.runInNewContext('({ backend: "standalone", config: { maxRounds: 8 } })');
   assert.equal(resolveEngineSettings(cfg).directLLM.model, 'cross-realm-model');
   assert.equal(applyEngineSettingsPatch(cfg, patch).engine.directLLM.maxRounds, 8);
@@ -172,9 +161,7 @@ test('malformed saved model config produces safe editable status without secret 
   assert.equal(status.config.apiKeyEnv, 'ULTRAROUTER_API_KEY');
   assert.equal(status.secret.source, 'environment');
   assert.ok(!JSON.stringify(status).includes('fixture-key-only'));
-  const dsh = getEngineStatus({ cfg, runtimeBackend: 'dsh', dshReady: true, env: {} });
-  assert.equal(dsh.ready, true);
-  assert.equal(dsh.requiresRestart, true);
+
 });
 
 test('connection test sends only GET models, rejects redirects and does not persist draft', async () => {
@@ -262,10 +249,10 @@ test('private atomic save preserves latest unrelated config and never writes key
     const saved = await updateEngineSettings({ configPath, secretPath, cfg: initial, patch: { backend: 'standalone', apiKey: 'saved-fixture-key' }, env: {}, runtimeBackend: 'dsh' });
     const disk = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     assert.deepEqual(disk.externalChange, { retained: true });
-    assert.deepEqual(disk.dsh, initial.dsh);
+    assert.deepEqual(disk.allow, initial.allow);
     assert.ok(!fs.readFileSync(configPath, 'utf8').includes('saved-fixture-key'));
     assert.ok(!JSON.stringify(saved.status).includes('saved-fixture-key'));
-    assert.equal(saved.status.requiresRestart, true);
+    assert.equal(saved.status.requiresRestart, false);
     assert.equal(saved.status.secret.source, 'stored');
     assert.equal(loadStoredEngineKey(secretPath).apiKey, 'saved-fixture-key');
     assert.equal(isHardened(secretPath), true);

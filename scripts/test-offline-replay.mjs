@@ -24,20 +24,21 @@ async function until(predicate, message, timeoutMs = 1500) {
 }
 
 async function fixture(run) {
+  let ready = false;
   const starts = [];
   const finishes = [];
   const h = await bridgeHarness({
     config: {
-      dsh: { directEngine: true },
       allow: { private: [123], groups: [456, 789] },
       consolePort: 0,
     },
     files: {
-      'dsh/agent-presets/qq-chat-v2/agent.cordis.yml':
+      'prompts/standalone-system.txt':
         '- id: persona\n  name: fixture\n  config:\n    prefix: fixture tool protocol\n',
     },
     globals: {
-      resolveDirectConfig: () => ({ model: 'fixture', provider: 'fixture', apiKey: 'fixture',
+      getEngineStatus: () => ({ ready, secret: { source: 'stored' } }),
+      resolveEngineDirectConfig: () => ({ model: 'fixture', provider: 'fixture', apiKey: 'fixture',
         baseURL: 'https://model.invalid/v1', webSearch: false, vision: false }),
       createDirectToolSession: async () => ({ tools: [], execute() {}, async close() {} }),
       runDirectTurn: async (options) => {
@@ -51,6 +52,7 @@ async function fixture(run) {
       },
     },
   });
+  h.setReady = value => { ready = value; };
   h.setMode('reserved2');
   h.setReady(false);
   return { h, starts, finishes, async close() { await h.close(); } };

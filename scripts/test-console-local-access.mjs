@@ -190,7 +190,7 @@ test('UI refresh exposes local mode and disables only console-token controls', a
     } },
     updateOverview() {}, setConnectionError(error) { throw error; },
   });
-  const source = html.slice(html.indexOf('async function refresh()'), html.indexOf('async function refreshPresets()'));
+  const source = html.slice(html.indexOf('async function refresh()'), html.indexOf('// Engine settings deliberately'));
   vm.runInContext(`${source}\nglobalThis.uiRefresh = refresh;`, context);
   for (const requireToken of [false, true, undefined]) {
     const before = removedStorage.length;

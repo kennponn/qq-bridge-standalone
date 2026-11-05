@@ -91,7 +91,7 @@ export async function createDirectToolSession({ key, agentToken, consolePort, si
       env: { QQ_BRIDGE_DIRECT_PORT: String(consolePort) }, maxBufferSize: 24 * 1024 * 1024
     });
     transport.stderr?.on('data', () => {});
-    const client = new Client({ name: 'qq-direct-engine', version: '0.2.1' });
+    const client = new Client({ name: 'qq-direct-engine', version: '0.4.0-r1' });
     clients.push({ client, transport });
     await client.connect(transport, { timeout: 15000 });
     const definitions = [];

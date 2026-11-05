@@ -214,7 +214,7 @@ test('top/bottom general save includes dirty voice settings through the narrow c
   assert.equal(writes[0].body.voice, undefined, 'Full configuration must not carry online consent.');
   assert.equal(f.result.config.tts.randomReplyProbability, 35);
   assert.equal(f.controller.hasVoiceSpeechDraft(), false);
-  assert.match(f.nodes.get('v2ConfigMsg').textContent, /二代及语音参数已保存/);
+  assert.match(f.nodes.get('v2ConfigMsg').textContent, /AI 行为及语音参数已保存/);
   assert.match(f.nodes.get('v2ConfigMsg').textContent, /35%/);
 });
 
@@ -232,7 +232,7 @@ test('partial failure is not shown as success and preserves the unsaved voice dr
   f.nodes.get('voiceRandomProbability').value = '35'; f.nodes.get('voiceRandomProbability').listeners.input();
   f.hook(request => request.path === '/api/voice/settings' && request.method === 'POST' ? { ok: false, error: 'fixture rejected' } : undefined);
   await f.controller.saveV2Config();
-  assert.match(f.nodes.get('v2ConfigMsg').textContent, /二代参数已保存，但语音设置未确认/);
+  assert.match(f.nodes.get('v2ConfigMsg').textContent, /AI 行为参数已保存，但语音设置未确认/);
   assert.equal(f.nodes.get('v2ConfigMsg').className, 'meta err');
   assert.equal(f.nodes.get('voiceRandomProbability').value, '35'); assert.equal(f.controller.hasVoiceSpeechDraft(), true);
 });

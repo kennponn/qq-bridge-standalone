@@ -35,7 +35,6 @@ import * as conversationMemory from '../src/conversation-memory.js';
 import * as voiceIncoming from '../src/voice-incoming.js';
 import * as voiceSpeech from '../src/voice-speech.js';
 import * as voiceMimo from '../src/voice-mimo.js';
-import { unwrap, createTurnCollector } from '../src/dsh-client.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 export async function bridgeHarness({ config = {}, savedState, files = {}, globals = {} } = {}) {
@@ -43,11 +42,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   fs.mkdirSync(path.join(temp, 'src'));
   fs.mkdirSync(path.join(temp, 'state'));
   fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({
-    dsh: { authToken: 'fixture-only' }, ownerQQ: 123,
+    engine: { backend: 'standalone', directLLM: { provider: 'openai-compatible', model: 'fixture-model', baseUrl: 'https://model.invalid/v1' } }, ownerQQ: 123,
     allow: { private: ['123'], groups: ['456'] }, consolePort: 0,
     consoleToken: 'fixture-console-token', slang: { enabled: false }, ...config,
   }));
-  if (savedState) fs.writeFileSync(path.join(temp, 'state/sessions.json'), JSON.stringify(savedState));
+  if (savedState) fs.writeFileSync(path.join(temp, 'state/sessions-standalone.json'), JSON.stringify(savedState));
   // 额外状态文件（用于测试"启动时读到损坏/旧版文件"这类路径）。
   for (const [rel, content] of Object.entries(files)) {
     const target = path.join(temp, rel);
@@ -96,28 +95,6 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     }
     return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 } }) };
   };
-  const success = (value) => ({ result: { ok: true, value } });
-  const api = {
-    events: { follow: (id) => calls.follows.push(id) },
-    // settings.describe 的默认桩：没有 qq-mode 命名空间 ⇒ refreshMode() 回退到本地 mode.json。
-    // 测试可覆盖它来验证「DSH 设置里的空 ownerQQ 不得覆盖 config.json」等契约。
-    settings: {
-      describe: async () => success({ namespaces: [] }),
-      update: async () => success({ updated: true })
-    },
-    workspace: {
-      create: async () => success({ created: false, workspace: { workspaceId: 'fixture-workspace' } }),
-      archiveSession: async ({ sessionId }) => { calls.archived.push(sessionId); return success({}); },
-    },
-    sessions: {
-      create: async (params) => { calls.created.push(params); return success({ sessionId: `fixture-${calls.created.length}` }); },
-      selectModel: async () => success({ selected: { provider: 'fixture', model: 'fixture' } }),
-      prompt: async (params) => { calls.prompts.push(params); return success({}); },
-    },
-    respond: async () => success({}),
-    stopSessionWork: async (sessionId) => { calls.cancelled.push(sessionId); return { removed: 0 }; },
-    callUnary: async (method, params) => { calls.cancelled.push({ method, params }); return success({ accepted: true }); },
-  };
   class FakeBot {
     async sendPrivateMessage(id, text) { calls.sent.push({ kind: 'private', id, text }); }
     async sendGroupMessage(id, text) { calls.sent.push({ kind: 'group', id, text }); }
@@ -163,13 +140,13 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   source = source.slice(0, source.indexOf("process.on('SIGINT'"));
   source = source.replace('  bot.onPrivateMessage(async (event) => {', `
   return {
-    ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
-    sendToQQ, sendBurstToQQ, sendMessagesV2, lastSendSucceeded, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
+    ensureSession, deliverPrompt, drainPromptQueue,
+    sendToQQ, sendMessagesV2, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2, loadSocialV2State, saveSocialV2State, formatMemoryV2,
-    buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2, social,
-    syncStickerLibrary, listStickersForV2, getStickerImageData,
-    refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
-    collectors, setupSleepTimerV2, pending,
+    buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
+    syncStickerLibrary, getStickerImageData,
+    modeAllowed, replayPendingWakeReasonsV2,
+    setupSleepTimerV2,
     pendingWakeKeys, wakeConfigUpdatedKeys, markReadCalledKeys, directTurnControllers, tokenLedger,
     noteModelMessagesV2, readThroughSeqV2,
     checkGroupSendPermissionV2, getGroupSendPermissionV2, observeGroupBanV2,
@@ -178,7 +155,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList,
     emojiCdnCandidates, getImageDimensions, acceptImageBuffer, MAX_MEDIA_BYTES, bot,
     isConversationBusyV2, v2TurnStartAt, turnLeaseNoted, TURN_BUSY_LEASE_MS,
-    settingFromDshNamespace, selfIdentityTextV2, buildWakeReminderPromptV2,
+    selfIdentityTextV2,
     getMode() { return currentMode; },
     setSelfIdentity(display, id) {
       selfDisplayName = String(display ?? '');
@@ -190,9 +167,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     voiceCfg, voiceLibrary, resolveVoicePathForV2, resolveVoicePathForOperator,
     voiceBudgetCheck, sendVoiceV2, sendVoiceForV2, assertOutboundAuditOk,
     speakText, sendReplyMessagesV2, speechService, assertSpeechTextSafe, speechSendLanes, voiceSendTimes,
-    setMode(value) { currentMode = value; },
-    setReady(value) { dshReady = value; },
-    setPresets(value) { dshPresetIds = value; dshDefaultPreset = 'standard'; },
+    setMode(value) { if (!['reserved2', 'simulation'].includes(value)) throw new Error('removed mode'); },
+
+
     resetEpoch() { sessionEpoch++; },
   };
   bot.onPrivateMessage(async (event) => {`);
@@ -208,14 +185,12 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     process: { pid: process.pid, platform: process.platform, kill: process.kill, env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },
     setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); return timer; },
     clearTimeout, setInterval: () => ({ unref() {} }), clearInterval: () => {},
-    NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     // The VM must never launch the user's real gateway during an offline test.
     createSnowLumaLauncher: () => ({
       getStatus: () => ({ available: false, running: false }),
       start: async () => ({ ok: false, error: 'fixture launcher disabled' }),
     }),
-    discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt,
     ...directEngine, ...directTools, ...engineSettings,
@@ -257,8 +232,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   vm.runInContext(`Object.assign(globalThis, (() => { ${modelViewSource}\nreturn { compactModelMessage, compactModelData, serializeModelData, describeAge }; })());`, context);
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
-  bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
-  bridge.setReady(true);
+
+
   return { ...bridge, calls, temp, async close() {
     for (const timer of timers) clearTimeout(timer);
     fs.rmSync(temp, { recursive: true, force: true });

@@ -1,18 +1,18 @@
 // 联网搜索（MCP `web_search` 的实现）。
 //
-// 设计目标：**优先复用 DSH 原本的联网搜索能力**，而不是自己抓 Bing 的搜索结果页。
+
 //
-// DSH 的 `web_search` 工具背后是 `@deepseek-ai/dsh-web-search-deepseek`：
+
 // 向 DeepSeek 的 Anthropic 兼容 Messages 端点发一次带 `web_search_20250305`
 // 服务端工具的请求，从 `web_search_tool_result` 里取结构化结果。本模块照同一
-// 端点/模型/工具参数实现一份最小客户端，于是 QQ 里的 AI 和 DSH 里的 AI 拿到的是
+
 // **同一路搜索结果**；搜索词只发给 DeepSeek（也就是本来就在处理这段对话的同一家），
 // 不再把群聊里提炼出来的词发给 Bing。
 //
-// 凭据解析顺序与 DSH 一致：
+
 //   1. config.json 的 `webSearch.apiKey`（不推荐，明文）
 //   2. 环境变量 `DEEPSEEK_API_KEY`（可用 `webSearch.apiKeyEnv` 改）
-//   3. DSH 的 `$DSH_HOME/.credentials.yaml` → `refs.<ref>`（DSH 的 Models 页写入的 key）
+
 // 都没有时：回退 Bing（`cn.bing.com` 的 RSS，失败再退回 HTML），保证"永远有一个能用的搜索"。
 //
 // 安全边界：
@@ -22,11 +22,9 @@
 // - 响应体有大小上限；请求有总超时；查询词在 MCP 层已清洗。
 // - Bing 走 safe-fetch（SSRF 防护 + 多地址故障切换）。
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
 import { URL } from 'node:url';
-import YAML from 'js-yaml';
 import { resolveSafeAddresses, safeFetch } from './safe-fetch.js';
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com/anthropic/v1';
@@ -70,7 +68,6 @@ export function loadSearchConfig(root) {
   return {
     ...defaultConfig,
     provider,
-    allowDshCredentials: (process.env.QQ_BRIDGE_ENGINE || file?.engine?.backend) !== 'standalone',
     apiKey: typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '',
     apiKeyEnv: typeof raw.apiKeyEnv === 'string' && raw.apiKeyEnv.trim() ? raw.apiKeyEnv.trim() : DEFAULT_API_KEY_ENV,
     baseURL: typeof raw.baseURL === 'string' ? raw.baseURL.trim().replace(/\/+$/, '') : '',
@@ -82,27 +79,6 @@ export function loadSearchConfig(root) {
   };
 }
 
-/** DSH home：与 dsh-client 的判定保持一致（`DSH_HOME` 优先）。 */
-export function resolveDshHome() {
-  return process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
-}
-
-/**
- * 从 DSH 的凭据文件里取 key。
- * 结构：`refs: { <名称>: <明文值> }`（实测；不是记录 id）。只看指定 ref，绝不遍历其它凭据。
- */
-export function readDshCredential(ref) {
-  const name = String(ref ?? '').trim();
-  if (!name) return '';
-  try {
-    const doc = YAML.load(fs.readFileSync(path.join(resolveDshHome(), '.credentials.yaml'), 'utf8'));
-    const value = doc?.refs?.[name];
-    return typeof value === 'string' ? value.trim() : '';
-  } catch {
-    return '';
-  }
-}
-
 /** 解析搜索用的 DeepSeek key；返回 { key, source } —— key 只在这里出现，不落日志。 */
 export function resolveSearchApiKey(config) {
   const literal = String(config?.apiKey ?? '').trim();
@@ -110,8 +86,6 @@ export function resolveSearchApiKey(config) {
   const envName = String(config?.apiKeyEnv || DEFAULT_API_KEY_ENV);
   const fromEnv = String(process.env[envName] ?? '').trim();
   if (fromEnv) return { key: fromEnv, source: 'env' };
-  const fromDsh = config?.allowDshCredentials === false ? '' : readDshCredential(envName);
-  if (fromDsh) return { key: fromDsh, source: 'dsh-credentials' };
   return { key: '', source: 'none' };
 }
 
@@ -131,7 +105,7 @@ function normalizeSearchUrl(raw) {
   }
 }
 
-/** 把 Anthropic Messages 响应映射成统一结果（参照 dsh-web-search-deepseek 的实现）。 */
+/** 把 Anthropic Messages 响应映射成统一结果。 */
 export function mapDeepSeekResponse(response, maxResults = 8) {
   const blocks = Array.isArray(response?.content) ? response.content : [];
   const resultBlocks = blocks.filter((block) => block?.type === 'web_search_tool_result');
@@ -439,10 +413,7 @@ export function clearSearchCache() {
   cache.clear();
 }
 
-/**
- * 统一入口：按配置选择 provider；`auto` 先试 DeepSeek（与 DSH 同源），失败回退 Bing。
- * @returns {{query:string, provider:'deepseek'|'bing', results:object[], fallbackFrom?:string, note?:string}}
- */
+
 export async function webSearch(query, options = {}) {
   const q = String(query ?? '').trim();
   if (!q) throw new Error('查询词为空');

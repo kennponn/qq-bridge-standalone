@@ -195,17 +195,12 @@ if (!hasVoiceTool()) {
   ok(fs.existsSync(path.join(ROOT, '..', '发语音-图形界面.cmd')), '上级 发语音-图形界面.cmd 启动器存在');
 }
 
-console.log('## preset 人设已描述语音能力（否则 AI 不知道自己会说话）');
+console.log('## 本地提示词描述语音能力');
 {
-  const preset = fs.readFileSync(path.join(ROOT, 'dsh', 'agent-presets', 'qq-chat-v2', 'agent.cordis.yml'), 'utf8');
-  ok(preset.includes('qq_send_voice'), 'qq-chat-v2 人设提到 qq_send_voice');
-  ok(preset.includes('qq_list_voices'), 'qq-chat-v2 人设提到 qq_list_voices');
-  ok(preset.includes('verified=true'), '人设说明 verified=true 的语义');
-  ok(/不要假装发了语音/.test(preset), '人设禁止假装发语音');
-  // DSH 0.1.7 起守卫的权威实现只有一份，在 qq-agent-presets bundle 里
-  // （dsh/agent-presets/<preset>/qq-tool-restrict.mjs 只是 re-export 壳）。
-  const restrict = fs.readFileSync(path.join(ROOT, 'plugins', 'qq-agent-presets', 'qq-tool-restrict.mjs'), 'utf8');
-  ok(restrict.includes("'mcp__snowluma__'"), 'preset 白名单以前缀放行 mcp__snowluma__*（覆盖语音工具）');
+  const prompt = fs.readFileSync(path.join(ROOT, 'prompts', 'standalone-system.txt'), 'utf8');
+  for (const name of ['qq_send_voice', 'qq_list_voices', 'verified=true', '不要假装发了语音']) {
+    ok(prompt.includes(name), `本地提示词包含 ${name}`);
+  }
 }
 
 console.log('## 控制台契约');
@@ -265,36 +260,6 @@ console.log('## 回归：AI 语音通道不许穿出语音库（P1，曾可复�
     }
     ok(accepted.every((p) => p.startsWith(dir + path.sep)), '被接受的路径全部落在语音库内', `${accepted.length} 个被接受`);
   } finally { await h.close(); }
-}
-
-console.log('## 回归：长消息里的 URL 不许被切碎（P1，曾静默丢 URL）');
-{
-  // 由来：splitLongSegment 用 \u0000URL<n>\u0000 占位符保护 URL，但对超长片段直接按
-  // max 硬切，会拦腰切断占位符 → 还原正则失配 → URL 整条消失 + 裸 NUL + 字面量 "URL0"
-  // 被发进 QQ 消息。这里把函数从 bridge.js 抽出来，对 1..max+20 所有长度做校验。
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-  const at = src.indexOf('function splitLongSegment');
-  ok(at > 0, '在 bridge.js 里找到 splitLongSegment');
-  if (at > 0) {
-    const endMarker = src.indexOf('\n  }', src.indexOf('return out', at));
-    const fnSrc = src.slice(at, endMarker + 4);
-    const splitLongSegment = eval(`(${fnSrc})`);   // eslint-disable-line no-eval
-    const url = 'https://example.com/very/long/path?q=1&x=2';
-    const max = 500;
-    let broken = 0;
-    const samples = [];
-    for (let n = 1; n <= max + 20; n++) {
-      const parts = splitLongSegment('啊'.repeat(n) + url, max);
-      const joined = parts.join('');
-      const bad = !joined.includes(url) || joined.includes('\u0000') || joined.includes('URL0') || joined.includes('URL1');
-      if (bad) { broken += 1; if (samples.length < 3) samples.push(`${n}:${JSON.stringify(parts.slice(-2))}`); }
-    }
-    ok(broken === 0, `1~${max + 20} 所有长度下 URL 都完整、无 NUL 泄漏`, broken ? `${broken} 个损坏，例：${samples.join(' ')}` : `共检查 ${max + 20} 个长度`);
-    const worst = Math.max(...splitLongSegment('啊'.repeat(2000) + url, max).map((s) => s.length));
-    ok(worst <= max + 40, '分段长度仍在合理范围（占位符不可切的让步）', `最长 ${worst}`);
-    const two = splitLongSegment('啊'.repeat(600) + url + '中间' + url, max).join('');
-    ok(two.includes(url) && two.split(url).length - 1 === 2, '两个 URL 都保留');
-  }
 }
 
 console.log('## 回归：AI 通道的语音库响应不许带出绝对路径（P1）');

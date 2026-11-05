@@ -18,7 +18,7 @@ foreach ($candidate in ($candidates | Select-Object -Unique)) {
         if ([version]$versionText -ge [version]'22.13.0') { $node = $candidate; break }
     } catch {}
 }
-if (-not $node) { throw 'Node.js >=22.13.0 is required. Install Node.js or set QQ_BRIDGE_NODE. DSH is not required.' }
+if (-not $node) { throw 'Node.js >=22.13.0 is required. Install Node.js or set QQ_BRIDGE_NODE.' }
 if (-not (Test-Path -LiteralPath (Join-Path $root 'config.json'))) { throw 'config.json is missing. Copy config.example.json and configure the QQ allowlist first.' }
 
 Set-Location -LiteralPath $root

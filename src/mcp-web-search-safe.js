@@ -1,11 +1,11 @@
-// 安全版 Web Search / Fetch MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。
+
 //
 // 安全设计：
 // - 只暴露只读工具 `web_search` 与 `web_fetch`：查网络用语/梗/黑话、抓取网页正文。
 // - 不暴露任何本地文件、命令执行、写操作。
 // - 查询词做基础清洗：去 CQ 码、控制字符、超长截断。
-// - 搜索：优先走 **DSH 同一路 DeepSeek 联网搜索**（src/web-search.js：同一端点/模型/
-//   服务端 web_search 工具，凭据取 config/env/DSH 的 .credentials.yaml），
+
+
 //   不可用时回退 Bing（RSS 优先）。搜索词不再默认发给 Bing。
 // - `web_fetch` 仅允许 http/https：
 //   - 禁止 URL 内嵌凭据；
@@ -21,13 +21,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-/**
- * 项目根目录（用于读 config.json 的 webSearch 段）。
- *
- * 不能用 `import.meta.url`：离线测试会把本文件塞进 vm 上下文执行（那里没有 import.meta，
- * 直接是语法错误）。DSH 以 `node <本文件绝对路径>` 启动 MCP，所以 argv[1] 就是本文件；
- * 取它的上一级 `src/` 的父目录即可。取不到时退回 cwd（测试环境正好从仓库根运行）。
- */
+
 function projectRoot() {
   try {
     const entry = String(process.argv[1] ?? '');
@@ -49,11 +43,11 @@ function sanitizeQuery(query) {
     .slice(0, 120);
 }
 
-const server = new McpServer({ name: 'web-search-safe', version: '0.3.0-r1' });
+const server = new McpServer({ name: 'web-search-safe', version: '0.4.0-r1' });
 
 server.tool(
   'web_search',
-  '只读联网搜索：优先使用与 DSH 相同的 DeepSeek 联网搜索（结果更准、不把群里的词发给搜索引擎广告网络），不可用时自动回退 Bing。返回标题/URL/摘要，不执行任何本地操作。适合查网络用语、梗、事实性问题和热点。',
+  '只读联网搜索：优先使用 DeepSeek 联网搜索（结果更准、不把群里的词发给搜索引擎广告网络），不可用时自动回退 Bing。返回标题/URL/摘要，不执行任何本地操作。适合查网络用语、梗、事实性问题和热点。',
   { query: z.string().describe('要搜索确认的网络用语/黑话/梗/事实性问题') },
   async ({ query }) => {
     const clean = sanitizeQuery(query);

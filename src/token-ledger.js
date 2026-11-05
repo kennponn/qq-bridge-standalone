@@ -1,9 +1,9 @@
-// Token 用量账本：把 DSH 会话事件里的 provider usage 落成「按会话 × 按回合」的可查明细，
+
 // 并在读取时用价目表折算成金额。
 //
 // 为什么这样设计（三条约束决定了实现形态）：
 //
-// 1. **权威总量来自 DSH 的 tokenUsage 投影，不来自桥接自己累加。**
+
 //    `session/follow` 的 snapshot 帧带 `projections.values.tokenUsage`，是**整条会话日志**的
 //    累计桶（含桥接启动之前的历史）。桥接只补「基线之后」的增量，所以总量是精确的，
 //    不需要重放全部历史。
@@ -11,7 +11,7 @@
 // 2. **逐轮明细靠事件折叠，且必须幂等。**
 //    snapshot 帧的 `records` 是最多 maxMessages 条历史事件，重连时会**重新下发**；
 //    因此同一 (session, turn, step, retry) 的采样必须「后到覆盖先到」，而不是累加。
-//    这与 DSH `dsh-token-meter` 的 tokenUsage 折叠语义一致：
+
 //      - `assistant/message` / `assistant/attempt` 带 usage 时，同 (turn, step) 覆盖上一次采样；
 //      - `llm/retry-started` 结束该覆盖作用域，于是重试的第二次请求**另算一次**（retry 轴 +1）。
 //
@@ -64,10 +64,7 @@ export function pickBucketMs(windowMs, maxBuckets) {
   return BUCKET_LADDER_MS[BUCKET_LADDER_MS.length - 1];
 }
 
-/**
- * 从 assistant stream 记录里取最后一个 usage 采样。
- * 与 DSH `dsh-token-meter` 的 `lastAssistantStreamChunk(stream, 'usage')` 同义。
- */
+
 export function usageFromStream(stream) {
   if (!Array.isArray(stream)) return undefined;
   for (let i = stream.length - 1; i >= 0; i -= 1) {
@@ -77,11 +74,7 @@ export function usageFromStream(stream) {
   return undefined;
 }
 
-/**
- * 取一条会话事件携带的 provider usage（原始桶，未归一化）。
- * 与 DSH `usageOf(event)` 一致：assistant/message 优先用 data.usage，
- * 否则回落到 assistant/attempt / assistant/message 的 stream 尾部采样。
- */
+
 export function usageOfEvent(event) {
   if (!event || typeof event !== 'object') return undefined;
   if (event.type === 'assistant/message' && event.data?.usage !== undefined) return event.data.usage;
@@ -392,7 +385,7 @@ export function createTokenLedger({
    */
   function ingestEvent({ sessionId, event, origin = 'live', at, model, provider } = {}) {
     if (typeof sessionId !== 'string' || !sessionId || !event || typeof event !== 'object') return false;
-    // 时间优先取事件自带的 `time`（Unix 毫秒，由 DSH 写入），它决定峰谷档位；
+
     // 取不到才回落到「收到时间」，避免机器时钟/重放顺序影响计价。
     const t = Number.isFinite(Number(at)) ? Number(at)
       : (Number.isFinite(Number(event.time)) ? Number(event.time) : now());

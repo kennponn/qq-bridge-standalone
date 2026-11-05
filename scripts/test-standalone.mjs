@@ -229,9 +229,9 @@ test('standalone bridge runs independently with only local mocked peers', { time
   await t.test('startup ignores the old DSH mode and preserves its separate state', async () => {
     const status = await h.api('/api/status');
     assert.equal(status.body.mode, 'reserved2');
-    assert.equal(status.body.dshReady, false);
+    assert.equal('dshReady' in status.body, false);
     assert.equal(status.body.engine.runtimeBackend, 'standalone');
-    assert.equal(status.body.engine.dshRequired, false);
+    assert.equal('dshRequired' in status.body.engine, false);
     assert.equal(status.body.engine.ready, true);
     assert.deepEqual(h.state('sessions.json'), legacyState);
     assert.equal(h.calls.dsh.length, 0);
@@ -312,10 +312,10 @@ test('standalone bridge runs independently with only local mocked peers', { time
   await t.test('DSH-only UI endpoints and mode changes fail locally without a DSH request', async () => {
     for (const route of ['/api/dsh/model', '/api/presets']) {
       const result = await h.api(route);
-      assert.ok([200, 409].includes(result.status), `${route}: ${result.status}`);
+      assert.equal(result.status, 404, `${route}: ${result.status}`);
     }
     const unsupported = await h.api('/api/mode', { mode: 'closed-agent' });
-    assert.equal(unsupported.status, 409);
+    assert.equal(unsupported.status, 404);
     assert.equal((await h.api('/api/status')).body.mode, 'reserved2');
     assert.equal(h.calls.dsh.length, 0);
   });

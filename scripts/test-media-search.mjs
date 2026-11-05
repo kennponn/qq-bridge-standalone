@@ -24,7 +24,6 @@ import {
   mapDeepSeekResponse,
   parseBingHtml,
   parseBingRss,
-  readDshCredential,
   resolveSearchApiKey,
   webSearch
 } from '../src/web-search.js';
@@ -225,7 +224,7 @@ await test('loadSearchConfig 默认值与越界收敛', async () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-await test('resolveSearchApiKey 的优先级：config > env > DSH 凭据', async () => {
+await test('resolveSearchApiKey 的优先级：config > env，绝不回退到旧后端凭据', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-dsh-home-'));
   const oldHome = process.env.DSH_HOME;
   const oldKey = process.env.QQ_TEST_SEARCH_KEY;
@@ -240,13 +239,11 @@ await test('resolveSearchApiKey 的优先级：config > env > DSH 凭据', async
     process.env.DSH_HOME = home;
     delete process.env.QQ_TEST_SEARCH_KEY;
 
-    assert.equal(resolveSearchApiKey({ apiKeyEnv: 'QQ_TEST_SEARCH_KEY' }).source, 'dsh-credentials');
-    assert.equal(readDshCredential('QQ_TEST_SEARCH_KEY'), 'sk-from-dsh-credentials');
+    assert.equal(resolveSearchApiKey({ apiKeyEnv: 'QQ_TEST_SEARCH_KEY' }).source, 'none');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({
       engine: { backend: 'standalone' }, webSearch: { apiKeyEnv: 'QQ_TEST_SEARCH_KEY' }
     }));
     const standaloneSearch = loadSearchConfig(home);
-    assert.equal(standaloneSearch.allowDshCredentials, false);
     assert.deepEqual(resolveSearchApiKey(standaloneSearch), { key: '', source: 'none' }, 'Standalone search must not reuse DSH credentials');
 
     process.env.QQ_TEST_SEARCH_KEY = 'sk-from-env';

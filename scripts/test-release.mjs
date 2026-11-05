@@ -8,12 +8,12 @@ const tests = process.argv.includes('--voice') ? [
 ] : [
   'test-release-docs.mjs', 'test-v2-modules-ui.mjs', 'test-console-contrast.mjs',
   'test-standalone.mjs', 'test-engine-settings.mjs', 'test-engine-console-ui.mjs',
-  'test-direct-engine.mjs', 'test-direct-tools-startup.mjs',
+  'test-direct-engine.mjs', 'test-direct-tools-startup.mjs', 'test-offline-replay.mjs', 'test-media-search.mjs',
   'test-context-memory-bridge.mjs', 'test-context-memory-ui.mjs',
   'test-always-awake-bridge.mjs', 'test-always-awake-timing.mjs',
   'test-group-send-permission.mjs', 'test-muted-group-bridge.mjs',
   'test-role-card.mjs', 'test-persona-save-ui.mjs', 'test-persona-modules-ui.mjs', 'test-console-local-access.mjs',
-  'test-snowluma-upstream-health.mjs', 'test-preset-local-tools.mjs', 'test-voice-system.mjs',
+  'test-snowluma-upstream-health.mjs', 'test-preset-local-tools.mjs', 'test-preset-prompt.mjs', 'test-tool-surface.mjs', 'test-audit-security-mcp.mjs', 'test-console-static.mjs', 'test-voice-system.mjs',
 ];
 let failed = 0;
 for (const file of tests) {

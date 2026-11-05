@@ -19,9 +19,7 @@ export function inspectReleaseDocs(root) {
   }
   const lock = json('package-lock.json');
   if (lock.version !== version || lock.packages?.['']?.version !== version) issues.push('package-lock.json: project version mismatch');
-  if (json('plugins/qq-mode-console/package.json').version !== version) issues.push('qq-mode-console: project version mismatch');
-  if (json('plugins/qq-agent-presets/package.json').version !== version) issues.push('qq-agent-presets: project version mismatch');
-  for (const file of ['src/mcp-host-server.js', 'src/mcp-snowluma-safe.js', 'src/mcp-web-search-safe.js']) {
+  for (const file of ['src/mcp-snowluma-safe.js', 'src/mcp-web-search-safe.js']) {
     const declared = /new McpServer\(\{[^}]*version:\s*'([^']+)'/.exec(read(file))?.[1];
     if (declared !== version) issues.push(`${file}: project version mismatch`);
   }
@@ -46,5 +44,5 @@ export function inspectReleaseDocs(root) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const issues = inspectReleaseDocs(fileURLToPath(new URL('..', import.meta.url)));
   if (issues.length) { console.error(issues.join('\n')); process.exitCode = 1; }
-  else console.log('版本、锁文件、兼容组件与中文发布文档检查通过。');
+  else console.log('版本、锁文件、安全工具与中文发布文档检查通过。');
 }

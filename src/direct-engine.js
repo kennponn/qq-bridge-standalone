@@ -13,38 +13,6 @@ function stableArguments(value) {
   return value;
 }
 
-export function resolveDirectConfig(dsh = {}, env = process.env) {
-  const options = dsh.directLLM ?? {};
-  const provider = String(options.provider || dsh.provider || '').trim();
-  const defaults = provider === 'deepseek-official'
-    ? { url: 'https://api.deepseek.com/v1', key: 'DEEPSEEK_API_KEY' }
-    : provider === 'openai-ultrarouter'
-      ? { url: 'https://ultrarouter.org/v1', key: 'ULTRAROUTER_API_KEY' }
-      : {};
-  const baseURL = String(env.QQ_DIRECT_BASE_URL || options.baseUrl || defaults.url || '').trim();
-  let url;
-  try { url = new URL(baseURL); } catch { throw new Error('DIRECT_CONFIG: configure dsh.directLLM.baseUrl or QQ_DIRECT_BASE_URL'); }
-  if (url.username || url.password || url.search || url.hash || url.protocol !== 'https:') {
-    throw new Error('DIRECT_CONFIG: model base URL must be HTTPS without credentials, query or fragment');
-  }
-  if (/\/chat\/completions\/?$/.test(url.pathname)) throw new Error('DIRECT_CONFIG: configure the API base URL, not the chat/completions endpoint');
-  const keyEnv = String(options.apiKeyEnv || defaults.key || 'QQ_DIRECT_API_KEY');
-  if (!/^[A-Za-z_][A-Za-z0-9_]{0,79}$/.test(keyEnv)) throw new Error('DIRECT_CONFIG: apiKeyEnv must be an environment variable name');
-  const apiKey = String(env.QQ_DIRECT_API_KEY || env[keyEnv] || '').trim();
-  if (!apiKey || /[\r\n]/.test(apiKey)) throw new Error(`DIRECT_CONFIG: missing or invalid API key environment variable ${keyEnv}`);
-  const model = String(options.model || dsh.model || '').trim();
-  if (!model) throw new Error('DIRECT_CONFIG: model is required');
-  return {
-    baseURL: baseURL.replace(/\/+$/, ''), apiKey, model, provider,
-    requestTimeoutMs: bounded(options.requestTimeoutMs, 90000, 1000, 300000),
-    turnTimeoutMs: bounded(options.turnTimeoutMs, 900000, 1000, 1500000),
-    maxRounds: bounded(options.maxRounds, 16, 1, 40),
-    maxRetries: bounded(options.maxRetries, 2, 0, 3),
-    vision: options.vision !== false,
-    webSearch: options.webSearch !== false
-  };
-}
-
 export function normalizeDirectUsage(usage = {}) {
   const nonnegative = (value) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
   const input = nonnegative(usage.prompt_tokens ?? usage.input_tokens ?? usage.inputTokens);

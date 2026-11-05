@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const html = await readFile(fileURLToPath(new URL('../public/console.html', import.meta.url)), 'utf8');
-const source = html.slice(html.indexOf('// Engine settings deliberately'), html.indexOf('\nasync function saveMode'));
+const source = html.slice(html.indexOf('// Engine settings deliberately'), html.indexOf('// ── 人格管理'));
 assert(source.length > 1000, 'Engine UI controller exists');
 assert(!/localStorage|sessionStorage|console\.log/.test(source), 'Engine controller never stores or logs credentials');
 const ids = [...html.matchAll(/\sid="([A-Za-z0-9_-]+)"/g)].map(match => match[1]);
@@ -104,41 +104,11 @@ await test('Polling never overwrites an editable model or credential draft', () 
   assert.equal(node('engineModel').value, 'draft-model');
   assert.equal(node('engineApiKey').value, 'synthetic-test-key');
 });
-await test('Saved-vs-running status never claims backend switched before restart', () => {
-  controller.renderEngineState({ ...settings, backend: 'dsh', requiresRestart: true });
-  assert.match(node('engineRuntimeText').textContent, /独立运行/);
-  assert.equal(node('engineRestartNotice').hidden, false);
-  assert.match(node('engineRestartNotice').textContent, /已保存：DSH 桥接/);
-  assert.match(node('engineRestartNotice').textContent, /当前进程仍为独立运行/);
-});
-await test('Standalone disables unsupported DSH mode and preset controls', () => {
-  assert(modes.every(button => button.disabled === (button.dataset.mode !== 'reserved2')));
-  assert.equal(node('closedPreset').disabled, true);
-  assert.equal(node('section-dsh').style.display, 'none');
-  assert.equal(node('dshEffortSave').disabled, true);
-  assert.equal(node('engineModeNote').hidden, false);
-  assert.equal(node('simPromptPreset').disabled, true);
-  assert.equal(node('v2AgentPreset').disabled, true);
+await test('Removed backend and mode controls do not exist in the DOM', () => {
+  for (const id of ['engineBackendDsh','engineBackendStandalone','closedPreset','section-dsh','section-mode','section-social-v1','section-pending','simPromptPreset','slangResearch']) assert(!nodes.has(id), id);
+  assert.equal(controller.engineDraftPayload().backend, 'standalone');
   assert.match(node('simPromptSave').textContent, /独立提示词/);
-  assert.equal(node('slangExtract').disabled, true);
-  assert.equal(node('slangResearch').disabled, true);
-  assert.equal(node('slangLearnerPreset').disabled, true);
   assert.equal(node('slangAdd').disabled, false);
-});
-await test('DSH runtime retains all original mode/model controls', () => {
-  controller.renderEngineState({ ...settings, backend: 'dsh', runtimeBackend: 'dsh', dshRequired: true });
-  assert(modes.every(button => button.disabled === false));
-  assert.equal(node('closedPreset').disabled, false);
-  assert.equal(node('section-dsh').style.display, '');
-  assert.equal(node('dshEffortSave').disabled, false);
-  assert.equal(node('slangResearch').disabled, false);
-  assert.equal(node('simPromptPreset').disabled, false);
-  assert.match(node('simPromptSave').textContent, /DSH/);
-});
-await test('Changing to DSH submits only backend, not disabled standalone drafts', () => {
-  node('engineBackendStandalone').checked = false;
-  node('engineBackendDsh').checked = true;
-  assert.deepEqual(clone(controller.engineDraftPayload()), { backend: 'dsh' });
 });
 await test('Connection test submits editable draft once without a configuration save', async () => {
   controller.populateEngineForm(settings);
@@ -168,13 +138,13 @@ await test('Error feedback cannot expose the typed key', async () => {
   assert.match(node('engineTestMsg').textContent, /密钥已隐藏/);
   assert.match(node('engineTestMsg').textContent, /当前配置未被更改/);
 });
-await test('Successful save clears key input and shows pending restart truthfully', async () => {
-  response = { ...settings, runtimeBackend: 'dsh', requiresRestart: true, dshRequired: true };
+await test('Successful save clears key input and takes effect next turn', async () => {
+  response = { ...settings };
   await node('engineForm').listeners.submit({ preventDefault() {} });
   assert.equal(requests.at(-1).path, '/api/engine');
   assert.equal(node('engineApiKey').value, '');
-  assert.match(node('engineFormMsg').textContent, /当前引擎尚未切换/);
-  assert.match(node('engineRuntimeText').textContent, /DSH 桥接/);
+  assert.match(node('engineFormMsg').textContent, /设置已保存/);
+  assert.match(node('engineRuntimeText').textContent, /独立运行/);
   assert.equal(node('engineSave').disabled, false);
 });
 await test('Malformed saved configuration still opens an editable repair form', async () => {

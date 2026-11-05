@@ -14,27 +14,6 @@
       "webSearch": true
     }
   },
-  "dsh": {
-    "baseUrl": "http://127.0.0.1:3080",
-    "provider": "deepseek-official",
-    "model": "deepseek-flash",
-    "reasoningEffort": "max",
-    "authToken": "",
-    "authHeader": "authorization",
-    "authPrefix": "Bearer",
-    "allowRemote": false,
-    "directEngine": false,
-    "directLLM": {
-      "baseUrl": "",
-      "apiKeyEnv": "QQ_DIRECT_API_KEY",
-      "requestTimeoutMs": 90000,
-      "turnTimeoutMs": 900000,
-      "maxRounds": 16,
-      "maxRetries": 2,
-      "vision": true,
-      "webSearch": true
-    }
-  },
   "role": {
     "maxInjectChars": 6000
   },
@@ -48,9 +27,6 @@
     "homeDir": ""
   },
   "ownerQQ": null,
-  "sessionCwd": "",
-  "agentPreset": "qq-chat",
-  "workspaceTitle": "QQ 聊天",
   "allow": {
     "private": [],
     "groups": []
@@ -62,7 +38,6 @@
   "allowAllWhenEmpty": false,
   "ackMessage": "",
   "sendDelayMs": 300,
-  "questionTimeoutMs": 300000,
   "consolePort": 3100,
   "consoleToken": "",
   "pricing": {
@@ -73,59 +48,11 @@
   },
   "slang": {
     "enabled": true,
-    "extractMinMessages": 10,
-    "extractCooldownMs": 300000,
-    "inferenceThresholds": [
-      2,
-      4,
-      8
-    ],
-    "injectMax": 8,
-    "learnerPreset": "qq-chat",
-    "workspaceTitle": "QQ 黑话学习",
-    "autoResearch": true
-  },
-  "social": {
-    "enabled": true,
-    "maxReplyChars": 500,
-    "mustReplyKeywords": [
-      "deepseek",
-      "小鲸鱼",
-      "大肥鱼",
-      "鲸鱼",
-      "d指导",
-      "在吗"
-    ],
-    "contextWindow": 20,
-    "triggerProbability": 0.1,
-    "activeCheckMinMs": 8000,
-    "activeCheckMaxMs": 30000,
-    "idleWindowMs": 360000,
-    "idleRetryProbability": 0.4,
-    "proactiveEnabled": true,
-    "proactiveIdleThresholdMs": 1800000,
-    "proactiveCheckMinMs": 2700000,
-    "proactiveCheckMaxMs": 5400000,
-    "proactiveProbability": 0.2,
-    "activeReplyDelayMinMs": 1000,
-    "activeReplyDelayMaxMs": 5000,
-    "activeDurationEnabled": true,
-    "activeDurationMinMs": 1200000,
-    "activeDurationMaxMs": 3000000,
-    "skipProbability": 0.05,
-    "surrenderProbability": 0,
-    "idleRetryWaitMs": 120000,
-    "burstEnabled": true,
-    "burstIntervalMinMs": 1000,
-    "burstIntervalMaxMs": 3000,
-    "longGapProbability": 0.2,
-    "longGapMinMs": 5000,
-    "longGapMaxMs": 10000
+    "injectMax": 8
   },
   "socialV2": {
     "enabled": true,
     "autoReplyCheckMs": 30000,
-    "agentPreset": "qq-chat-v2",
     "provideRecommendations": true,
     "tools": {
       "getPrompt": true,

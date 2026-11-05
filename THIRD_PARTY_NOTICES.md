@@ -10,12 +10,9 @@
 
 | 包名 | 锁定版本 | 声明的许可 |
 | --- | --- | --- |
-| `@deepseek-ai/dsh-host-apiproxy` | 0.1.1-rc.2 | MIT |
-| `@deepseek-ai/schemastery` | 3.18.1 | MIT |
 | `@modelcontextprotocol/sdk` | 1.32.2 | MIT |
 | `@snowluma/mcp` | 1.14.20 | SEE LICENSE IN LICENSE |
 | `@snowluma/sdk` | 1.14.20 | SEE LICENSE IN LICENSE |
-| `js-yaml` | 4.3.2 | MIT |
 | `zod` | 4.6.7 | MIT |
 
 使用或再次分发前，请阅读每个依赖的实际许可证和上游条款。特别是 `SEE LICENSE IN LICENSE` 只表示需要查阅相应许可证文件，并非 MIT 授权；若文件缺失或含义不清，应向维护者取得许可原文。不要假定网关及其 npm 包允许商业部署。

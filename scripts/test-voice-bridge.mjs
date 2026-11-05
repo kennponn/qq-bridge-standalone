@@ -232,7 +232,7 @@ test('random speech uses the same stage-direction filter as outgoing text', asyn
   }); } finally { await f.close(); }
 });
 
-test('quotes and administrator/closed-agent text sends are never converted', async () => {
+test('quotes and administrator text sends are never converted', async () => {
   const f = await fixture({ config: randomConfig(100) });
   try {
     const token = f.h.getSocialV2State('group:456').agentToken;
@@ -240,8 +240,7 @@ test('quotes and administrator/closed-agent text sends are never converted', asy
     assert.equal(sent.voice, undefined); assert.equal(f.calls.synth.length, 0);
     assert.equal(textRequests(f.h)[0].body.message[0].type, 'reply');
     await f.h.sendReplyMessagesV2('group:456', ['operator reply'], [], null, null, {});
-    f.h.setMode('closed-agent');
-    await f.h.sendReplyMessagesV2('private:123', ['owner reply'], [], null, null, { token: f.h.getSocialV2State('private:123').agentToken, tool: 'sendPrivate' });
+    await f.h.sendReplyMessagesV2('private:123', ['owner reply'], [], null, null, {});
     assert.equal(f.calls.synth.length, 0); assert.equal(recordRequests(f.h).length, 0);
     assert.equal(textRequests(f.h).length, 3);
   } finally { await f.close(); }
@@ -362,7 +361,7 @@ test('preview never sends QQ, returns only opaque URL and authenticated no-store
 test('text paths and known credential strings are rejected before fake provider receives text', async () => {
   const f = await fixture();
   try {
-    for (const text of ['fixture-console-token', 'fixture-only', 'C:\\Users\\example\\file.txt']) await assert.rejects(f.h.speakText('group:456', { text }), /凭据|路径/);
+    for (const text of ['fixture-console-token', 'C:\\Users\\example\\file.txt']) await assert.rejects(f.h.speakText('group:456', { text }), /凭据|路径/);
     assert.equal(f.calls.synth.length, 0); assert.equal(recordRequests(f.h).length, 0);
   } finally { await f.close(); }
 });

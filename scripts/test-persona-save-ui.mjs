@@ -5,8 +5,10 @@ import vm from 'node:vm';
 import { test } from 'node:test';
 
 const html = fs.readFileSync(new URL('../public/console.html', import.meta.url), 'utf8');
-const helpers = html.slice(html.indexOf('// Saving a card and selecting'), html.indexOf('// ── 仿真提示词（预设内置，需重启 DSH 生效）'));
+const helpers = html.slice(html.indexOf('// Saving a card and selecting'), html.indexOf('let simPromptOriginal'));
 const handlers = html.slice(html.indexOf("document.getElementById('roleInput').addEventListener"), html.indexOf('// ── 仿真提示词 ──'));
+
+assert.ok(helpers.length > 1000 && !helpers.includes('</script>'));
 
 function fixture({ current = 'alpha', cards = { alpha: 'FIXTURE_A', beta: 'FIXTURE_B' } } = {}) {
   class Element {

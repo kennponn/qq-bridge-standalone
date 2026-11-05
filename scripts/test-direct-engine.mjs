@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
-import { runDirectTurn, resolveDirectConfig, normalizeDirectUsage } from '../src/direct-engine.js';
+import { runDirectTurn, normalizeDirectUsage } from '../src/direct-engine.js';
 import { bindDirectTool, createDirectToolSession } from '../src/direct-tools.js';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
@@ -30,17 +30,6 @@ function engine(replies, execute = async () => ({ ok: true }), options = {}) {
     })
   };
 }
-
-test('provider credentials fail closed and never reuse a mismatched DeepSeek key', () => {
-  assert.throws(() => resolveDirectConfig({ provider: 'openai-ultrarouter', model: 'fixture' }, { DEEPSEEK_API_KEY: 'wrong-provider' }), /missing/);
-  const config = resolveDirectConfig({ provider: 'openai-ultrarouter', model: 'fixture' }, { ULTRAROUTER_API_KEY: 'fixture' });
-  assert.equal(config.baseURL, 'https://ultrarouter.org/v1');
-  assert.equal(config.apiKey, 'fixture');
-  const custom = resolveDirectConfig({ model: 'fixture', directLLM: { baseUrl: 'https://other.invalid/v1', apiKeyEnv: 'MY_LLM_KEY', maxRounds: 1000 } }, { MY_LLM_KEY: 'fixture' });
-  assert.equal(custom.baseURL, 'https://other.invalid/v1');
-  assert.equal(custom.maxRounds, 40);
-  assert.throws(() => resolveDirectConfig({ model: 'fixture', directLLM: { baseUrl: 'https://user:password@other.invalid/v1' } }, { QQ_DIRECT_API_KEY: 'fixture' }), /without credentials/);
-});
 
 test('usage normalizes cached tokens without double charging', () => {
   assert.deepEqual(normalizeDirectUsage({ prompt_tokens: 100, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 30 }, completion_tokens_details: { reasoning_tokens: 5 } }), { cacheMiss: 70, cacheHit: 30, cacheWrite: 0, output: 20, reasoning: 5 });
@@ -207,14 +196,15 @@ test('tool schemas hide credentials and bind each execution to its conversation'
 
 const KEY = 'group:456';
 const directConfig = () => ({ model: 'fixture', provider: 'fixture', apiKey: 'fixture', baseURL: 'https://model.invalid/v1', webSearch: false, vision: true });
-const files = { 'dsh/agent-presets/qq-chat-v2/agent.cordis.yml': '- id: persona\n  name: test\n  config:\n    prefix: fixture safety and tool protocol\n' };
+const files = { 'prompts/standalone-system.txt': 'fixture safety and tool protocol' };
 async function integration(run, extra = {}) {
   let closed = 0;
   let toolOptions;
   const h = await bridgeHarness({
-    config: { dsh: { directEngine: true }, consolePort: 4321, socialV2: { context: { unreadLimit: 100 } } }, files,
+    config: { consolePort: 4321, socialV2: { context: { unreadLimit: 100 } } }, files,
     globals: {
-      resolveDirectConfig: directConfig,
+      resolveEngineDirectConfig: directConfig,
+      getEngineStatus: () => ({ ready: true, secret: { source: 'stored' } }),
       createDirectToolSession: async (options) => { toolOptions = options; return { tools: [], execute() {}, async close() { closed++; } }; },
       runDirectTurn: run, ...extra
     }
@@ -308,27 +298,19 @@ test('a stale direct turn cannot release a replacement wake lock after reset', a
   } finally { await h.close(); }
 });
 
-test('direct silent turns consume only their own silent FIFO marker', async () => {
-  const fixture = await integration(async (options) => { assert.equal(options.silent, true); return { ok: true, sent: 0, closed: false }; });
-  const { h } = fixture;
+test('silent background turns stay local and close their own resources', async () => {
+  const f = await integration(async options => {
+    assert.equal(options.silent, true);
+    return { ok: true, sent: 0, closed: false };
+  });
   try {
-    const sid = h.state.sessions[KEY];
-    h.social.silentTurns.set(sid, [{ id: 'own-marker', ts: Date.now() }, { id: 'other-marker', ts: Date.now() }]);
-    await h.deliverPrompt(KEY, 'background', { silent: true, silentTurnId: 'own-marker' });
-    assert.equal(h.social.silentTurns.get(sid).length, 1);
-    assert.equal(h.social.silentTurns.get(sid)[0].id, 'other-marker');
-  } finally { await h.close(); }
-});
-
-test('non-reserved2 modes keep the original DSH engine and permissions', async () => {
-  const fixture = await integration(async () => { throw new Error('must not run'); });
-  const { h } = fixture;
-  try {
-    h.setMode('chat');
-    const result = await h.deliverPrompt(KEY, 'normal chat');
-    assert.equal(result.direct, undefined);
-    assert.equal(h.calls.prompts.length, 1);
-  } finally { await h.close(); }
+    const result = await f.h.deliverPrompt(KEY, 'background', { silent: true });
+    assert.equal(result.ok, true);
+    assert.equal(f.closed(), 1);
+    assert.equal(f.h.calls.sent.length, 0);
+    assert.equal(f.h.directTurnControllers.size, 0);
+    assert.throws(() => f.h.setMode('closed-agent'), /removed mode/);
+  } finally { await f.h.close(); }
 });
 
 test('safe MCP tool discovery restores memory, vision and search without network calls', async () => {

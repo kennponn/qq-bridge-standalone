@@ -10,7 +10,6 @@ const NODE = process.execPath;
 
 const SERVERS = [
   { serverName: 'snowluma', script: 'src/mcp-snowluma-safe.js' },
-  { serverName: 'snowluma-host', script: 'src/mcp-host-server.js' },
   { serverName: 'web-search-safe', script: 'src/mcp-web-search-safe.js' },
 ];
 
@@ -22,7 +21,7 @@ for (const { serverName, script } of SERVERS) {
     cwd: ROOT,
     stderr: 'pipe',
   });
-  const client = new Client({ name: 'dsh-mcp-probe', version: '0.0.0' });
+  const client = new Client({ name: 'qq-mcp-probe', version: '0.0.0' });
   try {
     await client.connect(transport);
     const { tools } = await client.listTools();
@@ -31,7 +30,7 @@ for (const { serverName, script } of SERVERS) {
     console.log(`   ${names.join(', ')}`);
     // 校验 DSH 的命名契约：mcp__<serverName>__<rawName>
     const bad = names.filter((n) => !/^[A-Za-z0-9_-]{1,64}$/.test(n));
-    if (bad.length) { console.log(`   ⚠️ 不符合 DSH 工具名契约: ${bad.join(', ')}`); failures += 1; }
+    if (bad.length) { console.log(`   ⚠️ 工具名格式无效: ${bad.join(', ')}`); failures += 1; }
   } catch (error) {
     console.log(`❌ ${serverName}: ${error?.message ?? error}`);
     failures += 1;
