@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 assert.deepEqual(inspectReleaseDocs(root), [], '当前版本文档必须一致');
 const temporaryRoot = fs.realpathSync(os.tmpdir());
 const fixture = fs.mkdtempSync(path.join(temporaryRoot, 'qq-release-docs-'));
-const files = ['package.json', 'package-lock.json', 'plugins/qq-mode-console/package.json',
+const files = ['package.json', 'package-lock.json', 'plugins/qq-mode-console/package.json', 'plugins/qq-agent-presets/package.json',
   'src/mcp-host-server.js', 'src/mcp-snowluma-safe.js', 'src/mcp-web-search-safe.js',
   'README.md', 'CHANGELOG.md', 'docs/README.md'];
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
@@ -25,6 +25,7 @@ try {
     ['package.json', text => text.replace(`"version": "${version}"`, '"version": "invalid"'), 'invalid project version'],
     ['package-lock.json', text => text.replace(`"version": "${version}"`, '"version": "99.0.0"'), 'project version mismatch'],
     ['plugins/qq-mode-console/package.json', text => text.replace(`"version": "${version}"`, '"version": "99.0.0"'), 'project version mismatch'],
+    ['plugins/qq-agent-presets/package.json', text => text.replace(`"version": "${version}"`, '"version": "99.0.0"'), 'project version mismatch'],
     ...['src/mcp-host-server.js', 'src/mcp-snowluma-safe.js', 'src/mcp-web-search-safe.js'].map(file => [file, text => text.replace(`version: '${version}'`, "version: '99.0.0'"), 'project version mismatch']),
     ['README.md', text => text.replace('当前版本', '旧版本'), 'missing current version'],
     ['CHANGELOG.md', text => text.replace(/(## \[[^\]]+\] - )\d{4}-\d{2}-\d{2}/, (_, heading) => `${heading}2026-02-30`), 'valid version/date heading'],

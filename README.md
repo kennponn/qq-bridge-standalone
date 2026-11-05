@@ -1,8 +1,8 @@
 # QQ Bridge Standalone
 
-**当前版本：`v0.2.1-r1`（首个开源预发布版）**
+**当前版本：`v0.3.0-r1`（模块化控制台与 MiMo 语音，预发布版）**
 
-[版本下载与说明](https://github.com/kennponn/qq-bridge-standalone/releases/tag/v0.2.1-r1) · [更新日志](CHANGELOG.md) · [中文文档](docs/README.md)
+[版本下载与说明](https://github.com/kennponn/qq-bridge-standalone/releases/tag/v0.3.0-r1) · [更新日志](CHANGELOG.md) · [中文文档](docs/README.md)
 
 一个本地运行的 QQ AI 机器人桥接项目：连接你自行安装的 SnowLuma / OneBot 网关，让支持 OpenAI 兼容接口的模型参与群聊和私聊。
 

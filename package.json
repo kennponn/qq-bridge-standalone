@@ -1,6 +1,6 @@
 {
   "name": "qq-bridge",
-  "version": "0.2.1-r1",
+  "version": "0.3.0-r1",
   "private": true,
   "license": "MIT",
   "description": "本地 QQ AI 桥接器，支持独立模型引擎、安全 OneBot 工具和可选 DSH 后端。",

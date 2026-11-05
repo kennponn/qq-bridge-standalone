@@ -20,6 +20,7 @@ export function inspectReleaseDocs(root) {
   const lock = json('package-lock.json');
   if (lock.version !== version || lock.packages?.['']?.version !== version) issues.push('package-lock.json: project version mismatch');
   if (json('plugins/qq-mode-console/package.json').version !== version) issues.push('qq-mode-console: project version mismatch');
+  if (json('plugins/qq-agent-presets/package.json').version !== version) issues.push('qq-agent-presets: project version mismatch');
   for (const file of ['src/mcp-host-server.js', 'src/mcp-snowluma-safe.js', 'src/mcp-web-search-safe.js']) {
     const declared = /new McpServer\(\{[^}]*version:\s*'([^']+)'/.exec(read(file))?.[1];
     if (declared !== version) issues.push(`${file}: project version mismatch`);
