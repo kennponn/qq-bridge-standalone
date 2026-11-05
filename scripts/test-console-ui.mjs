@@ -74,6 +74,7 @@ try {
   async function reveal(selector) {
     const target = page.locator(selector).first();
     const view = await target.evaluate(el => el.closest('[data-page]')?.dataset.page);
+    await target.evaluate(el => { if (typeof revealV2Module === 'function') revealV2Module(el); });
     if (view) await navigate(view);
     for (const details of await target.locator('xpath=ancestor::details').all()) {
       if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();

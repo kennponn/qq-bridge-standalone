@@ -1818,6 +1818,31 @@ button:active:not(:disabled) {
 #section-usage .usage-legend i.off { background:var(--accent) }
 #section-usage .usage-legend i.mixed { background:var(--accent-hover) }
 
+/* Module navigation keeps the original form controls mounted across tab changes. */
+.v2-module-help { margin:0 0 14px }
+.v2-command-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0 20px }
+.v2-command-bar #v2ConfigSaveTop { margin-left:auto }
+.v2-command-bar #v2ActivityStatus { flex-basis:100% }
+.v2-module-nav { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); position:sticky; top:0; z-index:7; gap:4px; padding:8px 0; background:var(--surface); border-bottom:1px solid var(--border) }
+.v2-module-nav .v2-module-tab { border:0; border-bottom:3px solid transparent; border-radius:6px 6px 0 0; background:transparent; color:var(--text-secondary); min-height:44px; padding:10px 6px; font-size:13px; white-space:nowrap; transform:none }
+.v2-module-nav .v2-module-tab[aria-selected="true"] { color:var(--accent-soft-fg); background:var(--accent-soft-bg); border-bottom-color:var(--accent); font-weight:600 }
+.v2-module-nav .v2-module-tab:hover { background:var(--surface-hover) }
+.v2-module-intro { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:22px 0 4px }
+.v2-module-intro h3 { margin:0 0 6px; font-size:16px; color:var(--text-strong) }
+.v2-module-intro p { margin:0 }
+.v2-module-panel { min-width:0; outline-offset:4px }
+.v2-module-panel :is(input,select,textarea,button,summary) { scroll-margin-top:120px; scroll-margin-bottom:130px }
+.v2-module-panel > .settings-group { margin-top:12px }
+#section-social-v2 > .save-bar { margin-top:24px; background:var(--surface) }
+@media (max-width:640px) {
+  .v2-module-nav { grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; padding:6px 0 }
+  .v2-module-nav .v2-module-tab { font-size:12px; min-height:40px; padding:8px 4px }
+  .v2-command-bar button { flex:1; min-width:0; padding:9px 6px!important; font-size:12px }
+  .v2-module-intro { align-items:flex-start; flex-wrap:wrap; padding-top:18px }
+  #section-social-v2 > .save-bar { position:sticky; bottom:8px; z-index:8 }
+  #section-social-v2 > .save-bar > .meta { display:none }
+  #section-social-v2 .settings-content :is(input[type="text"],input[type="password"],select,textarea) { min-width:0; max-width:100% }
+}
 </style>
 </head>
 <body>
@@ -2130,35 +2155,203 @@ button:active:not(:disabled) {
       <div class="meta">一代仿真模式状态机：观望期按“明确点名 / 小概率”触发进入活跃；活跃期每 10~20 秒批量查看新消息并回应；群聊活跃超过随机上限会主动提示 AI 收尾退场；冷场后大概率回观望、小概率让 AI 试探一句。可手动强制切换状态。</div>
     </div></section>
 <section id="section-social-v2" data-page="social-v2" class="card span-all">
-      <h2>二代仿真模式（reserved2）控制台</h2>
-      <div class="meta">配置保存后写入 config.json 并热更新；工具开关决定 AI 能调用哪些工具。独立运行的工具清单在下一轮刷新；DSH 桥接中已接入开关的工具在<b>重启 DSH 后</b>会从清单里消失。发送类等跨模式共用的工具始终受桥接安全检查。</div>
-
-      <div class="row" style="margin-top:10px">
+<h2>二代仿真控制台</h2>
+<p class="meta v2-module-help">按模块调整设置。切换不会保存，也不会清空当前输入。</p>
+<div class="v2-command-bar">
+        <button id="v2PauseBtn" class="danger">暂停二代 AI</button>
+        <button id="v2ResumeBtn">恢复二代 AI</button>
+        <button id="v2ConfigSaveTop" style="font-weight:bold;padding:6px 14px">保存全部参数</button>
+        <span class="meta" id="v2ActivityStatus">读取中…</span>
+      </div>
+<div class="v2-module-nav" id="v2ModuleTabs" role="tablist" aria-label="二代仿真模块">
+<button type="button" class="v2-module-tab" id="v2Tab-overview" role="tab" data-v2-tab="overview" aria-controls="v2Panel-overview" aria-selected="true" tabindex="0">运行总览</button>
+<button type="button" class="v2-module-tab" id="v2Tab-wake" role="tab" data-v2-tab="wake" aria-controls="v2Panel-wake" aria-selected="false" tabindex="-1">唤醒节奏</button>
+<button type="button" class="v2-module-tab" id="v2Tab-reply" role="tab" data-v2-tab="reply" aria-controls="v2Panel-reply" aria-selected="false" tabindex="-1">回复工具</button>
+<button type="button" class="v2-module-tab" id="v2Tab-voice" role="tab" data-v2-tab="voice" aria-controls="v2Panel-voice" aria-selected="false" tabindex="-1">语音设置</button>
+<button type="button" class="v2-module-tab" id="v2Tab-memory" role="tab" data-v2-tab="memory" aria-controls="v2Panel-memory" aria-selected="false" tabindex="-1">记忆提示词</button>
+<button type="button" class="v2-module-tab" id="v2Tab-logs" role="tab" data-v2-tab="logs" aria-controls="v2Panel-logs" aria-selected="false" tabindex="-1">日志反馈</button>
+</div>
+<div class="v2-module-panel" id="v2Panel-overview" data-v2-panel="overview" role="tabpanel" aria-labelledby="v2Tab-overview" tabindex="0">
+<div class="v2-module-intro"><div><h3>运行总览</h3><p class="meta">开关、常驻监听与当前会话状态。</p></div></div>
+<details class="settings-group" open><summary>基本运行</summary><div class="settings-content">
+<div class="row" style="margin-top:10px">
         <label style="flex:1">启用二代模式</label><input type="checkbox" id="v2Enabled" style="width:auto">
         <label style="flex:1">agentPreset</label><input type="text" id="v2AgentPreset" placeholder="qq-chat-v2" style="max-width:200px">
       </div>
-      <div id="v2EnginePresetNote" class="meta" hidden>独立运行不读取 DSH agentPreset；安全提示词可在「人格与角色」中编辑。</div>
-      <div class="row" style="margin-top:10px">
+<div id="v2EnginePresetNote" class="meta" hidden>独立运行不读取 DSH agentPreset；安全提示词可在「人格与角色」中编辑。</div>
+<div class="row" style="margin-top:10px">
         <label for="v2AlwaysAwake" style="flex:1">群聊常驻监听（不自动潜水）</label>
         <input type="checkbox" id="v2AlwaysAwake" aria-describedby="v2AlwaysAwakeHelp" style="width:auto">
         <button id="v2AlwaysAwakeApply">应用常驻监听</button>
         <span class="meta" id="v2AlwaysAwakeStatus" role="status" aria-live="polite">当前：读取中…</span>
       </div>
-      <div id="v2AlwaysAwakeHelp" class="meta">仅独立引擎生效。开启后，允许范围内的群聊新消息按 1 秒合批处理，AI 不能自动改回潜水；没有新消息时不会为常驻监听反复调用模型。仍保留暂停、禁言和唤醒／发送限额；私聊不变。</div>
-      <div id="v2AlwaysAwakeMsg" class="meta" role="status" aria-live="polite"></div>
-      <div class="row" style="margin-top:6px">
+<div id="v2AlwaysAwakeHelp" class="meta">仅独立引擎生效。开启后，允许范围内的群聊新消息按 1 秒合批处理，AI 不能自动改回潜水；没有新消息时不会为常驻监听反复调用模型。仍保留暂停、禁言和唤醒／发送限额；私聊不变。</div>
+<div id="v2AlwaysAwakeMsg" class="meta" role="status" aria-live="polite"></div>
+</div></details>
+<details class="settings-group" open><summary>私聊快速响应</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">启用私聊快速响应</label><input type="checkbox" id="v2PrivateFastReply" style="width:auto">
+        <span class="meta" style="flex:2">完整消息及时回复，回复后安全收尾；不套用群聊的五分钟观察或回复检查。群聊参数不变。</span>
+      </div>
+      <div class="row">
+        <label style="flex:1">私聊合并窗口（毫秒）</label><input type="number" id="v2PrivateBatchMs" min="100" max="5000" step="100" style="width:100px">
+        <label style="flex:1">私聊短静默（毫秒）</label><input type="number" id="v2PrivateQuietMs" min="0" max="30000" step="100" style="width:100px">
+      </div>
+      <p class="meta">独立模式默认开启：合批 700ms、短静默 1500ms。短静默只在确实需要等补充时使用，不是每次回复的固定延迟；保存会中止旧的私聊等待并按新参数处理未读。</p>
+      </div></details>
+<details class="settings-group" open><summary>白名单会话快速选择</summary><div class="settings-content">
+      <div class="row">
+        <select id="v2SessionSelect" style="flex:1"><option value="">选择白名单群/私聊…</option></select>
+        <button id="v2SessionRefresh" class="small">刷新</button>
+      </div>
+
+      </div></details>
+<details class="settings-group"><summary>会话状态查看</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2StateKey" placeholder="group:123456789" style="flex:1">
+        <button id="v2StateView" class="small">查看</button>
+        <button id="v2ForceWake" class="small">立即唤醒</button>
+        <button id="v2StatesList" class="small">列出全部会话状态</button>
+      </div>
+      <pre id="v2StateOutput">（空）</pre>
+      <pre id="v2AllStatesOutput" style="margin-top:6px">（全部会话状态：空）</pre>
+    </div></details>
+<details class="settings-group"><summary>唤醒状态（AI 当前设置的下一次唤醒条件/倒计时）</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2WakeKey" placeholder="group:123456789" style="flex:1">
+        <button id="v2WakeStatusLoad" class="small">查看唤醒状态</button>
+        <span class="meta" id="v2WakeStatusMsg"></span>
+      </div>
+      <div id="v2WakeStatusOutput" class="tool-log-table">（空）</div>
+
+</div></details>
+<details class="settings-group"><summary>维护与运行说明</summary><div class="settings-content">
+<div class="meta">配置保存后写入 config.json 并热更新；工具开关决定 AI 能调用哪些工具。独立运行的工具清单在下一轮刷新；DSH 桥接中已接入开关的工具在<b>重启 DSH 后</b>会从清单里消失。发送类等跨模式共用的工具始终受桥接安全检查。</div>
+<p class="meta">重置会清除二代会话状态，请谨慎操作。</p>
+<button id="v2ResetBtn" class="danger">重置二代状态</button>
+</div></details>
+</div>
+<div class="v2-module-panel" id="v2Panel-wake" data-v2-panel="wake" role="tabpanel" aria-labelledby="v2Tab-wake" tabindex="0" hidden>
+<div class="v2-module-intro"><div><h3>唤醒节奏</h3><p class="meta">设置什么时候参与、等多久，以及何时主动开口。</p></div></div>
+<div class="row" style="margin-top:6px">
         <label style="flex:1">提供推荐值给 AI</label><input type="checkbox" id="v2ProvideRecommendations" style="width:auto">
         <span class="meta" style="flex:2">关闭后 qq_get_prompt 不再返回推荐值，AI 完全自主判断。</span>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button id="v2PauseBtn" class="danger">暂停二代 AI</button>
-        <button id="v2ResumeBtn">恢复二代 AI</button>
-        <button id="v2ResetBtn" class="danger">重置二代状态</button>
-        <button id="v2ConfigSaveTop" style="font-weight:bold;padding:6px 14px">保存当前参数</button>
-        <span class="meta" id="v2ActivityStatus">读取中…</span>
+<details class="settings-group" open><summary>唤醒推荐值（仅参考，AI 可不遵守）</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">默认模式</label>
+        <select id="v2WakeDefaultMode" style="width:120px"><option value="diving">潜水</option><option value="active">活跃</option></select>
+        <label style="flex:1">默认下一次唤醒：无限期（永久）</label><input type="checkbox" id="v2RecDefaultInfinite" style="width:auto">
+      </div>
+      <div class="row">
+        <label style="flex:1">推荐潜水时长（分）</label>
+        <input type="number" id="v2RecSleepMin" min="1" style="width:80px"> ~
+        <input type="number" id="v2RecSleepMax" min="1" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">推荐普通消息概率</label><input type="number" id="v2RecProb" step="0.05" min="0" max="1" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">推荐关键词（逗号分隔）</label><input type="text" id="v2RecKeywords" placeholder="小鲸鱼, DeepSeek" style="flex:1">
+      </div>
+      <div class="row">
+        <label style="flex:1">推荐 @ 唤醒</label><input type="checkbox" id="v2RecAt" style="width:auto">
+        <label style="flex:1">推荐名字唤醒</label><input type="checkbox" id="v2RecName" style="width:auto">
+        <label style="flex:1">推荐提问唤醒</label><input type="checkbox" id="v2RecQuestion" style="width:auto">
+        <label style="flex:1">推荐拍一拍唤醒</label><input type="checkbox" id="v2RecPoke" style="width:auto">
+      </div>
+      <label>唤醒推荐提示（给 AI 看的文字）</label>
+      <textarea id="v2WakeHint" rows="2" placeholder="例如：如果你在潜水，推荐 5~120 分钟、普通消息概率 0.05…"></textarea>
+
+      </div></details>
+<details class="settings-group"><summary>唤醒硬限制</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">最小潜水（秒）</label><input type="number" id="v2SleepMinMs" min="0" style="width:90px">
+        <label style="flex:1">最大潜水（秒，0=不限）</label><input type="number" id="v2SleepMaxMs" min="0" style="width:90px">
+      </div>
+      <div class="row">
+        <label style="flex:1">每分钟最多唤醒</label><input type="number" id="v2MaxWakeMin" min="0" style="width:90px">
+        <label style="flex:1">每小时最多唤醒</label><input type="number" id="v2MaxWakeHour" min="0" style="width:90px">
+      </div>
+      <div class="row">
+        <label style="flex:1">合并窗口（毫秒）</label><input type="number" id="v2BatchWindowMs" min="1000" step="500" style="width:100px">
+        <label style="flex:1">无行动兜底次数</label><input type="number" id="v2NoActionLimit" min="1" style="width:80px">
+        <label style="flex:1">唤醒收尾提醒次数</label><input type="number" id="v2MaxWakeConfigReminders" min="1" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">启用沉睡前强制等待</label><input type="checkbox" id="v2PreSleepWaitEnabled" style="width:auto">
+        <label style="flex:1">沉睡前强制等待（分）</label><input type="number" id="v2PreSleepWaitMin" min="0" step="1" style="width:80px">
+        <span class="meta" style="flex:2">AI 设置潜水/下一次唤醒前，默认必须先等够这个观察窗口；0 表示不限制。</span>
       </div>
 
-      <details class="settings-group"><summary>工具开关（独立运行下一轮刷新；DSH 桥接需重启 DSH 刷新清单，重启前仅调用时拒绝）</summary><div class="settings-content">
+      </div></details>
+<details class="settings-group"><summary>等待工具参数（qq_wait_for_messages）</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">默认等待（毫秒）</label><input type="number" id="v2WaitDefaultMs" min="100" style="width:90px">
+        <label style="flex:1">最小等待（毫秒）</label><input type="number" id="v2WaitMinMs" min="100" style="width:90px">
+        <label style="flex:1">最大等待（毫秒）</label><input type="number" id="v2WaitMaxMs" min="100" style="width:90px">
+      </div>
+      <div class="row">
+        <label style="flex:1">默认静默窗口（毫秒）</label><input type="number" id="v2WaitDefaultQuietMs" min="0" style="width:90px">
+        <label style="flex:1">收到新消息后最小静默（毫秒）</label><input type="number" id="v2MinQuietAfterNewMs" min="0" style="width:90px">
+        <span class="meta" style="flex:2">收到新消息后至少再等这么久（默认 10000ms=10 秒），防止抢话。</span>
+      </div>
+      <div class="row">
+        <label style="flex:1">回复检查延迟（秒）</label><input type="number" id="v2AutoReplyCheckSec" min="1" style="width:90px">
+        <span class="meta" style="flex:2">回复检查是 AI 发消息后回来检查是否有人回复的延迟。</span>
+      </div>
+
+      </div></details>
+<details class="settings-group"><summary>主动机会参数（proactive：群安静时 AI 主动冒泡）</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">启用主动机会</label><input type="checkbox" id="v2ProactiveEnabled" style="width:auto">
+        <label style="flex:1">检查间隔（分）</label>
+        <input type="number" id="v2ProactiveIntervalMin" min="1" style="width:80px"> ~
+        <input type="number" id="v2ProactiveIntervalMax" min="1" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">安静阈值（分）</label><input type="number" id="v2ProactiveIdleThreshold" min="1" style="width:80px">
+        <label style="flex:1">触发概率</label><input type="number" id="v2ProactiveProbability" step="0.05" min="0" max="1" style="width:80px">
+      </div>
+
+      </div></details>
+</div>
+<div class="v2-module-panel" id="v2Panel-reply" data-v2-panel="reply" role="tabpanel" aria-labelledby="v2Tab-reply" tabindex="0" hidden>
+<div class="v2-module-intro"><div><h3>回复工具</h3><p class="meta">控制发言频率、可用工具和表情包。</p></div></div>
+<details class="settings-group" open><summary>发送限制</summary><div class="settings-content">
+      <div class="meta" style="margin-bottom:8px">二代不再按空格自动拆条；AI 要分多条必须显式传数组或用 qq_send_burst。</div>
+      <div class="row">
+        <label style="flex:1">允许多条发送</label><input type="checkbox" id="v2BurstEnabled" style="width:auto">
+        <label style="flex:1">单次最多条数</label><input type="number" id="v2BurstMax" min="1" style="width:70px">
+      </div>
+      <div class="row">
+        <label style="flex:1">条间间隔（毫秒）</label>
+        <input type="number" id="v2BurstMin" min="0" style="width:80px"> ~
+        <input type="number" id="v2BurstMaxMs" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">长间隔概率</label><input type="number" id="v2LongGapProb" step="0.05" min="0" max="1" style="width:80px">
+        <label style="flex:1">长间隔范围（毫秒）</label>
+        <input type="number" id="v2LongGapMin" min="0" style="width:80px"> ~
+        <input type="number" id="v2LongGapMax" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">每分钟最多发送</label><input type="number" id="v2MaxSendMin" min="0" style="width:80px">
+        <label style="flex:1">每小时最多发送</label><input type="number" id="v2MaxSendHour" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">单条最大字符</label><input type="number" id="v2MaxMsgChars" min="1" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">最大条间隔（毫秒，防止过长）</label><input type="number" id="v2MaxGapMs" min="100" style="width:90px">
+        <label style="flex:1">按字数基础间隔（毫秒）</label><input type="number" id="v2GapBaseMs" min="0" style="width:80px">
+        <label style="flex:1">每字追加（毫秒）</label><input type="number" id="v2GapPerCharMs" min="0" style="width:80px">
+      </div>
+      <label>发送推荐提示（给 AI 看的文字）</label>
+      <textarea id="v2SendHint" rows="2" placeholder="例如：普通闲聊建议一次 1~3 条，条间 1~3 秒…"></textarea>
+
+      </div></details>
+<details class="settings-group"><summary>工具开关（独立运行下一轮刷新；DSH 桥接需重启 DSH 刷新清单，重启前仅调用时拒绝）</summary><div class="settings-content">
       <div class="v2-tool-list" id="v2Tools">
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getPrompt"> <span><b>qq_get_prompt</b><span class="meta">查看角色卡、推荐值、可用工具、当前唤醒配置</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getUnread"> <span><b>qq_get_unread_messages</b><span class="meta">查看未读消息，不自动标记已读</span></span></label>
@@ -2189,12 +2382,37 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条；在线文字转语音需在下方单独启用并同意</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条；在线文字转语音需在“语音设置”中单独启用并同意</span></span></label>
       </div>
       <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
 
       </div></details>
-<details id="voiceSpeechPanel" class="settings-group"><summary>语音识别与在线朗读</summary><div class="settings-content">
+<details class="settings-group"><summary>表情包参数（sticker：QQ 收藏表情体系）</summary><div class="settings-content">
+      <div class="row">
+        <label style="flex:1">启用表情包体系</label><input type="checkbox" id="v2StickerEnabled" style="width:auto">
+        <label style="flex:1">同步缓存 TTL（秒）</label><input type="number" id="v2StickerSyncTtlSec" min="1" style="width:90px">
+        <label style="flex:1">列表最大返回数</label><input type="number" id="v2StickerMaxList" min="1" max="500" style="width:90px">
+      </div>
+      <div class="row">
+        <label style="flex:1">提示中列出常用表情数</label><input type="number" id="v2StickerPromptMax" min="1" max="30" style="width:90px">
+        <label style="flex:1">在 prompt/唤醒里附带表情摘要</label><input type="checkbox" id="v2StickerIncludePrompt" style="width:auto">
+        <span class="meta" style="flex:2">关闭后 AI 仍可主动调用 qq_list_stickers，只是不主动喂到上下文。</span>
+      </div>
+      <div class="row">
+        <label style="flex:1">AI 收藏表情</label><input type="checkbox" id="v2StickerCollectEnabled" style="width:auto">
+        <label style="flex:1">每分钟最多收藏</label><input type="number" id="v2StickerCollectPerMin" min="0" style="width:80px">
+        <label style="flex:1">每小时最多收藏</label><input type="number" id="v2StickerCollectPerHour" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">收藏备注最大字数</label><input type="number" id="v2StickerCollectRemarkMax" min="1" max="50" style="width:80px">
+        <span class="meta" style="flex:2">AI 收藏别人表情时写的简短备注长度上限。</span>
+      </div>
+
+      </div></details>
+</div>
+<div class="v2-module-panel" id="v2Panel-voice" data-v2-panel="voice" role="tabpanel" aria-labelledby="v2Tab-voice" tabindex="0" hidden>
+<div class="v2-module-intro"><div><h3>语音设置</h3><p class="meta">音色、语速、随机语音，以及本机试听。</p></div></div>
+<details id="voiceSpeechPanel" class="settings-group" open><summary>语音识别与在线朗读</summary><div class="settings-content">
       <div class="row">
         <label for="voiceIncomingEnabled" style="flex:1">接收 QQ 语音并转成文字</label><input type="checkbox" id="voiceIncomingEnabled" style="width:auto">
       </div>
@@ -2254,151 +2472,10 @@ button:active:not(:disabled) {
       </div>
 
       </div></details>
-<details class="settings-group"><summary>唤醒推荐值（仅参考，AI 可不遵守）</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">默认模式</label>
-        <select id="v2WakeDefaultMode" style="width:120px"><option value="diving">潜水</option><option value="active">活跃</option></select>
-        <label style="flex:1">默认下一次唤醒：无限期（永久）</label><input type="checkbox" id="v2RecDefaultInfinite" style="width:auto">
-      </div>
-      <div class="row">
-        <label style="flex:1">推荐潜水时长（分）</label>
-        <input type="number" id="v2RecSleepMin" min="1" style="width:80px"> ~
-        <input type="number" id="v2RecSleepMax" min="1" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">推荐普通消息概率</label><input type="number" id="v2RecProb" step="0.05" min="0" max="1" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">推荐关键词（逗号分隔）</label><input type="text" id="v2RecKeywords" placeholder="小鲸鱼, DeepSeek" style="flex:1">
-      </div>
-      <div class="row">
-        <label style="flex:1">推荐 @ 唤醒</label><input type="checkbox" id="v2RecAt" style="width:auto">
-        <label style="flex:1">推荐名字唤醒</label><input type="checkbox" id="v2RecName" style="width:auto">
-        <label style="flex:1">推荐提问唤醒</label><input type="checkbox" id="v2RecQuestion" style="width:auto">
-        <label style="flex:1">推荐拍一拍唤醒</label><input type="checkbox" id="v2RecPoke" style="width:auto">
-      </div>
-      <label>唤醒推荐提示（给 AI 看的文字）</label>
-      <textarea id="v2WakeHint" rows="2" placeholder="例如：如果你在潜水，推荐 5~120 分钟、普通消息概率 0.05…"></textarea>
-
-      </div></details>
-<details class="settings-group"><summary>唤醒硬限制</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">最小潜水（秒）</label><input type="number" id="v2SleepMinMs" min="0" style="width:90px">
-        <label style="flex:1">最大潜水（秒，0=不限）</label><input type="number" id="v2SleepMaxMs" min="0" style="width:90px">
-      </div>
-      <div class="row">
-        <label style="flex:1">每分钟最多唤醒</label><input type="number" id="v2MaxWakeMin" min="0" style="width:90px">
-        <label style="flex:1">每小时最多唤醒</label><input type="number" id="v2MaxWakeHour" min="0" style="width:90px">
-      </div>
-      <div class="row">
-        <label style="flex:1">合并窗口（毫秒）</label><input type="number" id="v2BatchWindowMs" min="1000" step="500" style="width:100px">
-        <label style="flex:1">无行动兜底次数</label><input type="number" id="v2NoActionLimit" min="1" style="width:80px">
-        <label style="flex:1">唤醒收尾提醒次数</label><input type="number" id="v2MaxWakeConfigReminders" min="1" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">启用沉睡前强制等待</label><input type="checkbox" id="v2PreSleepWaitEnabled" style="width:auto">
-        <label style="flex:1">沉睡前强制等待（分）</label><input type="number" id="v2PreSleepWaitMin" min="0" step="1" style="width:80px">
-        <span class="meta" style="flex:2">AI 设置潜水/下一次唤醒前，默认必须先等够这个观察窗口；0 表示不限制。</span>
-      </div>
-
-      </div></details>
-<details class="settings-group" open><summary>私聊快速响应</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">启用私聊快速响应</label><input type="checkbox" id="v2PrivateFastReply" style="width:auto">
-        <span class="meta" style="flex:2">完整消息及时回复，回复后安全收尾；不套用群聊的五分钟观察或回复检查。群聊参数不变。</span>
-      </div>
-      <div class="row">
-        <label style="flex:1">私聊合并窗口（毫秒）</label><input type="number" id="v2PrivateBatchMs" min="100" max="5000" step="100" style="width:100px">
-        <label style="flex:1">私聊短静默（毫秒）</label><input type="number" id="v2PrivateQuietMs" min="0" max="30000" step="100" style="width:100px">
-      </div>
-      <p class="meta">独立模式默认开启：合批 700ms、短静默 1500ms。短静默只在确实需要等补充时使用，不是每次回复的固定延迟；保存会中止旧的私聊等待并按新参数处理未读。</p>
-      </div></details>
-<details class="settings-group"><summary>发送限制</summary><div class="settings-content">
-      <div class="meta" style="margin-bottom:8px">二代不再按空格自动拆条；AI 要分多条必须显式传数组或用 qq_send_burst。</div>
-      <div class="row">
-        <label style="flex:1">允许多条发送</label><input type="checkbox" id="v2BurstEnabled" style="width:auto">
-        <label style="flex:1">单次最多条数</label><input type="number" id="v2BurstMax" min="1" style="width:70px">
-      </div>
-      <div class="row">
-        <label style="flex:1">条间间隔（毫秒）</label>
-        <input type="number" id="v2BurstMin" min="0" style="width:80px"> ~
-        <input type="number" id="v2BurstMaxMs" min="0" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">长间隔概率</label><input type="number" id="v2LongGapProb" step="0.05" min="0" max="1" style="width:80px">
-        <label style="flex:1">长间隔范围（毫秒）</label>
-        <input type="number" id="v2LongGapMin" min="0" style="width:80px"> ~
-        <input type="number" id="v2LongGapMax" min="0" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">每分钟最多发送</label><input type="number" id="v2MaxSendMin" min="0" style="width:80px">
-        <label style="flex:1">每小时最多发送</label><input type="number" id="v2MaxSendHour" min="0" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">单条最大字符</label><input type="number" id="v2MaxMsgChars" min="1" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">最大条间隔（毫秒，防止过长）</label><input type="number" id="v2MaxGapMs" min="100" style="width:90px">
-        <label style="flex:1">按字数基础间隔（毫秒）</label><input type="number" id="v2GapBaseMs" min="0" style="width:80px">
-        <label style="flex:1">每字追加（毫秒）</label><input type="number" id="v2GapPerCharMs" min="0" style="width:80px">
-      </div>
-      <label>发送推荐提示（给 AI 看的文字）</label>
-      <textarea id="v2SendHint" rows="2" placeholder="例如：普通闲聊建议一次 1~3 条，条间 1~3 秒…"></textarea>
-
-      </div></details>
-<details class="settings-group"><summary>等待工具参数（qq_wait_for_messages）</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">默认等待（毫秒）</label><input type="number" id="v2WaitDefaultMs" min="100" style="width:90px">
-        <label style="flex:1">最小等待（毫秒）</label><input type="number" id="v2WaitMinMs" min="100" style="width:90px">
-        <label style="flex:1">最大等待（毫秒）</label><input type="number" id="v2WaitMaxMs" min="100" style="width:90px">
-      </div>
-      <div class="row">
-        <label style="flex:1">默认静默窗口（毫秒）</label><input type="number" id="v2WaitDefaultQuietMs" min="0" style="width:90px">
-        <label style="flex:1">收到新消息后最小静默（毫秒）</label><input type="number" id="v2MinQuietAfterNewMs" min="0" style="width:90px">
-        <span class="meta" style="flex:2">收到新消息后至少再等这么久（默认 10000ms=10 秒），防止抢话。</span>
-      </div>
-      <div class="row">
-        <label style="flex:1">回复检查延迟（秒）</label><input type="number" id="v2AutoReplyCheckSec" min="1" style="width:90px">
-        <span class="meta" style="flex:2">回复检查是 AI 发消息后回来检查是否有人回复的延迟。</span>
-      </div>
-
-      </div></details>
-<details class="settings-group"><summary>主动机会参数（proactive：群安静时 AI 主动冒泡）</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">启用主动机会</label><input type="checkbox" id="v2ProactiveEnabled" style="width:auto">
-        <label style="flex:1">检查间隔（分）</label>
-        <input type="number" id="v2ProactiveIntervalMin" min="1" style="width:80px"> ~
-        <input type="number" id="v2ProactiveIntervalMax" min="1" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">安静阈值（分）</label><input type="number" id="v2ProactiveIdleThreshold" min="1" style="width:80px">
-        <label style="flex:1">触发概率</label><input type="number" id="v2ProactiveProbability" step="0.05" min="0" max="1" style="width:80px">
-      </div>
-
-      </div></details>
-<details class="settings-group"><summary>表情包参数（sticker：QQ 收藏表情体系）</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">启用表情包体系</label><input type="checkbox" id="v2StickerEnabled" style="width:auto">
-        <label style="flex:1">同步缓存 TTL（秒）</label><input type="number" id="v2StickerSyncTtlSec" min="1" style="width:90px">
-        <label style="flex:1">列表最大返回数</label><input type="number" id="v2StickerMaxList" min="1" max="500" style="width:90px">
-      </div>
-      <div class="row">
-        <label style="flex:1">提示中列出常用表情数</label><input type="number" id="v2StickerPromptMax" min="1" max="30" style="width:90px">
-        <label style="flex:1">在 prompt/唤醒里附带表情摘要</label><input type="checkbox" id="v2StickerIncludePrompt" style="width:auto">
-        <span class="meta" style="flex:2">关闭后 AI 仍可主动调用 qq_list_stickers，只是不主动喂到上下文。</span>
-      </div>
-      <div class="row">
-        <label style="flex:1">AI 收藏表情</label><input type="checkbox" id="v2StickerCollectEnabled" style="width:auto">
-        <label style="flex:1">每分钟最多收藏</label><input type="number" id="v2StickerCollectPerMin" min="0" style="width:80px">
-        <label style="flex:1">每小时最多收藏</label><input type="number" id="v2StickerCollectPerHour" min="0" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">收藏备注最大字数</label><input type="number" id="v2StickerCollectRemarkMax" min="1" max="50" style="width:80px">
-        <span class="meta" style="flex:2">AI 收藏别人表情时写的简短备注长度上限。</span>
-      </div>
-
-      </div></details>
-<details class="settings-group"><summary>对话上下文（每轮实际携带的历史）</summary><div class="settings-content">
+</div>
+<div class="v2-module-panel" id="v2Panel-memory" data-v2-panel="memory" role="tabpanel" aria-labelledby="v2Tab-memory" tabindex="0" hidden>
+<div class="v2-module-intro"><div><h3>记忆提示词</h3><p class="meta">管理上下文、会话记忆与首次唤醒提示。</p></div><button type="button" class="small" data-v2-open="overview" data-v2-focus="v2SessionSelect">选择群／私聊</button></div>
+<details class="settings-group" open><summary>对话上下文（每轮实际携带的历史）</summary><div class="settings-content">
       <div class="row">
         <label for="v2ContextWindow" style="flex:1">每轮历史消息条数</label><input type="number" id="v2ContextWindow" min="1" max="100" style="width:90px">
         <label for="v2ContextRecentLimit" style="flex:1">本地最近消息上限</label><input type="number" id="v2ContextRecentLimit" min="20" max="500" style="width:90px">
@@ -2411,36 +2488,14 @@ button:active:not(:disabled) {
       <div class="meta">独立引擎每轮自动携带最近的历史消息（包括机器人自己的发言和其他人的消息，默认 20 条）；本地存了多少条不等于本轮全部发给模型。当前未读优先，历史还受字符预算限制；这里的字符数不是 token 或模型最大上下文。调大单条上限只影响之后收到／发出的消息，不能找回已截掉的旧内容。</div>
 
       </div></details>
-<details class="settings-group"><summary>反馈工具参数（qq_report_feedback）</summary><div class="settings-content">
-      <div class="row">
-        <label style="flex:1">反馈最大长度</label><input type="number" id="v2FeedbackMaxLength" min="1" style="width:90px">
-        <label style="flex:1">错误级通知 owner</label><input type="checkbox" id="v2FeedbackNotifyOwner" style="width:auto">
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button id="v2FeedbackLoad" class="small">加载 AI 反馈</button>
-        <button id="v2FeedbackClear" class="small danger">清空 AI 反馈</button>
-        <span class="meta" id="v2FeedbackMsg"></span>
-      </div>
-      <pre id="v2FeedbackOutput">（空）</pre>
-
-      </div></details>
-<details class="settings-group"><summary>工具调用日志（AI 调用了什么工具、参数、成功/失败）</summary><div class="settings-content">
-      <div class="row">
-        <button id="v2ToolLogLoad" class="small">加载工具日志</button>
-        <button id="v2ToolLogClear" class="small danger">清空工具日志</button>
-        <span class="meta" id="v2ToolLogMsg"></span>
-      </div>
-      <div id="v2ToolLogOutput" class="tool-log-table">（空）</div>
-
-      </div></details>
 <details class="settings-group"><summary>会话记忆（长期事实、历史摘录与轻量记忆）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2MemoryKey" placeholder="从下方选择群／私聊，或输入 group:123456789" aria-label="记忆所属会话" style="flex:1">
+        <input type="text" id="v2MemoryKey" placeholder="从“运行总览”选择群／私聊，或输入 group:123456789" aria-label="记忆所属会话" style="flex:1">
         <button id="v2MemoryLoad" class="small">加载记忆</button>
         <button id="v2MemoryClearAll" class="small danger">清空该会话全部记忆</button>
         <span class="meta" id="v2MemoryMsg" role="status" aria-live="polite"></span>
       </div>
-      <div class="meta">记忆按群／私聊分别保存，不跨群共享。聊天中明确说「记住：……」可保存该会话的长期事实；「忘记：……」只删除匹配的长期事实，不删除原始聊天历史。自动历史摘录保留原发言片段，不是模型编造的摘要，只能删除不能改写；删除或清空摘录也不会删除最近聊天。长期事实与摘录仍有保存和每轮注入预算，不代表无限记忆。下方白名单会话选择器可直接选群／私聊。</div>
+      <div class="meta">记忆按群／私聊分别保存，不跨群共享。聊天中明确说「记住：……」可保存该会话的长期事实；「忘记：……」只删除匹配的长期事实，不删除原始聊天历史。自动历史摘录保留原发言片段，不是模型编造的摘要，只能删除不能改写；删除或清空摘录也不会删除最近聊天。长期事实与摘录仍有保存和每轮注入预算，不代表无限记忆。“运行总览”的白名单会话选择器可直接选群／私聊。</div>
       <label for="v2FactText">新增长期事实（只保存到当前选择的会话）</label>
       <textarea id="v2FactText" rows="2" placeholder="例如：每周三晚上八点讨论代码。" style="min-height:70px"></textarea>
       <div class="row">
@@ -2452,15 +2507,6 @@ button:active:not(:disabled) {
       <div id="v2MemoryOutput" class="tool-log-table">（空）</div>
 
       </div></details>
-<details class="settings-group"><summary>唤醒状态（AI 当前设置的下一次唤醒条件/倒计时）</summary><div class="settings-content">
-      <div class="row">
-        <input type="text" id="v2WakeKey" placeholder="group:123456789" style="flex:1">
-        <button id="v2WakeStatusLoad" class="small">查看唤醒状态</button>
-        <span class="meta" id="v2WakeStatusMsg"></span>
-      </div>
-      <div id="v2WakeStatusOutput" class="tool-log-table">（空）</div>
-
-</div></details>
 <details class="settings-group"><summary>初始提示词（预写某个群/私聊的环境，只在 AI 首次唤醒时看一次）</summary><div class="settings-content">
       <div class="meta" style="margin-bottom:8px">
         在这里提前告诉 AI「这个群是什么圈子、什么氛围、聊什么、有什么忌讳」。AI 只在<b>该会话的第一次唤醒</b>时收到一次，
@@ -2483,30 +2529,40 @@ button:active:not(:disabled) {
       <div id="v2InitPromptList" class="tool-log-table">（点「加载」且 key 留空时，列出所有已设置的会话）</div>
 
 </div></details>
-<details class="settings-group"><summary>白名单会话快速选择</summary><div class="settings-content">
+</div>
+<div class="v2-module-panel" id="v2Panel-logs" data-v2-panel="logs" role="tabpanel" aria-labelledby="v2Tab-logs" tabindex="0" hidden>
+<div class="v2-module-intro"><div><h3>日志反馈</h3><p class="meta">查看 AI 调用了什么，以及它遇到的问题。</p></div></div>
+<details class="settings-group" open><summary>工具调用日志（AI 调用了什么工具、参数、成功/失败）</summary><div class="settings-content">
       <div class="row">
-        <select id="v2SessionSelect" style="flex:1"><option value="">选择白名单群/私聊…</option></select>
-        <button id="v2SessionRefresh" class="small">刷新</button>
+        <button id="v2ToolLogLoad" class="small">加载工具日志</button>
+        <button id="v2ToolLogClear" class="small danger">清空工具日志</button>
+        <span class="meta" id="v2ToolLogMsg"></span>
       </div>
+      <div id="v2ToolLogOutput" class="tool-log-table">（空）</div>
 
       </div></details>
-<details class="settings-group"><summary>会话状态查看</summary><div class="settings-content">
+<details class="settings-group"><summary>反馈工具参数（qq_report_feedback）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2StateKey" placeholder="group:123456789" style="flex:1">
-        <button id="v2StateView" class="small">查看</button>
-        <button id="v2ForceWake" class="small">立即唤醒</button>
-        <button id="v2StatesList" class="small">列出全部会话状态</button>
+        <label style="flex:1">反馈最大长度</label><input type="number" id="v2FeedbackMaxLength" min="1" style="width:90px">
+        <label style="flex:1">错误级通知 owner</label><input type="checkbox" id="v2FeedbackNotifyOwner" style="width:auto">
       </div>
-      <pre id="v2StateOutput">（空）</pre>
-      <pre id="v2AllStatesOutput" style="margin-top:6px">（全部会话状态：空）</pre>
-    </div></details>
+      <div class="row" style="margin-top:6px">
+        <button id="v2FeedbackLoad" class="small">加载 AI 反馈</button>
+        <button id="v2FeedbackClear" class="small danger">清空 AI 反馈</button>
+        <span class="meta" id="v2FeedbackMsg"></span>
+      </div>
+      <pre id="v2FeedbackOutput">（空）</pre>
+
+      </div></details>
+</div>
 <div class="save-bar">      <div class="row" style="margin-top:10px">
-        <button id="v2ConfigSave" style="font-weight:bold;padding:8px 16px">保存当前参数（写入 config.json）</button>
+        <button id="v2ConfigSave" style="font-weight:bold;padding:8px 16px">保存全部参数</button>
         <span class="meta" id="v2ConfigMsg"></span>
       </div>
-      <div class="meta" style="margin-top:4px">修改上面任意推荐/默认参数后，必须点这个按钮才会持久化；保存后会自动应用到仍使用默认唤醒配置的会话，重启后仍然保留。</div>
+      <div class="meta" style="margin-top:4px">统一保存各模块参数（包括未显示的模块）；记忆、初始提示词及发送操作使用各自按钮。</div>
 
-      </div></section>
+      </div>
+</section>
 <section id="section-slang" data-page="slang" class="card span-all">
       <h2>群聊黑话 / 网络用语库</h2>
       <div class="meta">DSH 会从群聊中自动提取疑似黑话候选；二代仿真模式下 AI 也可用 <code>qq_slang_submit</code> 主动提交陌生词。候选可批量送 DSH 深度联网研究，研究结果回到控制台由你删改修正后转正；确认后的词条会写入“黑话提示词”，注入一代/二代 AI 的聊天上下文，成为 AI 可查询和使用的记忆。</div>
@@ -4016,7 +4072,7 @@ for (const id of ['voiceIncomingEnabled', 'voiceTtsEnabled', 'voiceOnlineConsent
   voiceSpeechDraftRevision++; invalidateVoiceSpeechPreview(); syncVoiceSpeechButtons();
   if (id !== 'voiceTtsText') {
     voiceSpeechSettingsDirty = true;
-    setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；点击“保存语音设置”或页面“保存当前参数”均可保存');
+    setVoiceSpeechMessage('voiceSettingsStatus', '有未保存的语音设置；点击“保存语音设置”或页面“保存全部参数”均可保存');
   }
 });
 document.getElementById('voiceSettingsSave').addEventListener('click', saveVoiceSpeechSettings);
@@ -5517,11 +5573,53 @@ document.getElementById('consoleTokenSave').addEventListener('click', () => chan
 document.getElementById('consoleTokenRandom').addEventListener('click', () => changeConsoleToken(true));
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
+// V2 module navigation: store only the selected module, never form drafts or credentials.
+const v2ModuleStorageKey = 'qq-console-social-v2-module';
+const v2ModuleTabs = [...document.querySelectorAll('#v2ModuleTabs [data-v2-tab]')];
+const v2ModulePanels = [...document.querySelectorAll('#section-social-v2 [data-v2-panel]')];
+function setV2Module(name, { focus = false, persist = true } = {}) {
+  const selected = v2ModuleTabs.find(tab => tab.dataset.v2Tab === name) || v2ModuleTabs[0];
+  if (!selected) return;
+  const value = selected.dataset.v2Tab;
+  for (const tab of v2ModuleTabs) {
+    const active = tab === selected;
+    tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1;
+  }
+  for (const panel of v2ModulePanels) panel.hidden = panel.dataset.v2Panel !== value;
+  if (persist) { try { localStorage.setItem(v2ModuleStorageKey, value); } catch {} }
+  if (focus) selected.focus({ preventScroll: true });
+}
+function revealV2Module(target) {
+  const panel = target?.closest('[data-v2-panel]');
+  if (panel) setV2Module(panel.dataset.v2Panel);
+}
+for (const tab of v2ModuleTabs) {
+  tab.addEventListener('click', () => setV2Module(tab.dataset.v2Tab));
+  tab.addEventListener('keydown', event => {
+    const index = v2ModuleTabs.indexOf(tab);
+    const destination = { ArrowRight: (index + 1) % v2ModuleTabs.length, ArrowLeft: (index - 1 + v2ModuleTabs.length) % v2ModuleTabs.length, Home: 0, End: v2ModuleTabs.length - 1 }[event.key];
+    if (destination === undefined) return;
+    event.preventDefault(); setV2Module(v2ModuleTabs[destination].dataset.v2Tab, { focus: true });
+  });
+}
+document.querySelectorAll('[data-v2-open]').forEach(button => button.addEventListener('click', () => {
+  setV2Module(button.dataset.v2Open);
+  const target = document.getElementById(button.dataset.v2Focus);
+  if (!target) return;
+  let ancestor = target.closest('details');
+  while (ancestor) { ancestor.open = true; ancestor = ancestor.parentElement.closest('details'); }
+  target.scrollIntoView({ block: 'center', behavior: 'instant' }); target.focus({ preventScroll: true });
+}));
+let savedV2Module;
+try { savedV2Module = localStorage.getItem(v2ModuleStorageKey); } catch {}
+setV2Module(savedV2Module, { persist: false });
+// End V2 module navigation.
+
 const consolePages = {
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看当前引擎的 QQ 会话映射，以及等待你回复的审批和提问。'],
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
-  'social-v2': ['二代仿真', '自主参与，恰到好处。', '管理 AI 的工具、唤醒与发言节奏。展开需要调整的分组，修改后保存参数。'],
+  'social-v2': ['二代仿真', '自主参与，恰到好处。', '按模块管理唤醒、回复、语音和记忆。不必再翻一整页设置。'],
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],
   usage: ['令牌与花费', '每一次思考，都算得清楚。', '实时查看 AI 的 token 消耗与花费，可下钻到每个群、每个好友、每一轮对话。'],
@@ -5691,6 +5789,7 @@ searchInput.addEventListener('input', () => {
     button.append(title,caption);
     button.addEventListener('click', () => {
       setConsolePage(entry.page);
+      revealV2Module(entry.target);
       let ancestor = entry.target.closest('details');
       while (ancestor) { ancestor.open = true; ancestor = ancestor.parentElement.closest('details'); }
       if (entry.target.closest('.slang-panel')) {
