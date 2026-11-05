@@ -26,6 +26,7 @@ function fixture({ current = 'alpha', cards = { alpha: 'FIXTURE_A', beta: 'FIXTU
   const nodes = new Map(ids.map(id => [id, new Element(id === 'roleInput' ? 'select' : 'div')]));
   const requests = [];
   const failures = new Map();
+  let acceptDiscard = false;
   let hook;
   const state = { cards: { ...cards }, current };
   const context = vm.createContext({
@@ -58,7 +59,7 @@ function fixture({ current = 'alpha', cards = { alpha: 'FIXTURE_A', beta: 'FIXTU
       if (path === '/api/role') { state.current = body.role; return { ok: true, role: body.role }; }
       throw new Error('Unexpected fixture route: ' + path);
     },
-    refresh() { context.controller.sync(state.current); }, prompt() { return null; }, confirm() { return false; },
+    refresh() { context.controller.sync(state.current); }, prompt() { return null; }, confirm() { return acceptDiscard; },
   });
   vm.runInContext(helpers + '\n' + handlers + `\nthis.controller = {
     refreshRoles, openRoleForEdit, saveRoleEditor, sync: syncCurrentRole,
@@ -70,6 +71,7 @@ function fixture({ current = 'alpha', cards = { alpha: 'FIXTURE_A', beta: 'FIXTU
     choose(name) { node('roleInput').value = name; node('roleInput').listeners.change(); },
     draft(name = 'gamma', content = 'FIXTURE_G') { node('newRoleName').value = name; node('newRoleContent').value = content; },
     hook(fn) { hook = fn; }, writes: () => requests.filter(request => request.method === 'POST'),
+    discard(value) { acceptDiscard = value; },
   };
 }
 
@@ -190,4 +192,23 @@ test('successful rename followed by save failure keeps editor bound to renamed f
   assert.equal(f.controller.editor().name, 'gamma'); assert.equal(f.state.current, 'alpha');
   f.failures.clear(); await f.click('roleCreate');
   assert.deepEqual(f.writes().slice(2).map(request => request.path), ['/api/roles/update', '/api/role']);
+});
+
+test('loading another card and clearing a form require confirmation before discarding a draft', async () => {
+  const f = fixture(); await f.controller.refreshRoles(); f.draft('draft', 'KEEP_ME');
+  const before = f.requests.length;
+  await f.controller.openRoleForEdit('beta'); await f.click('roleFormReset');
+  assert.equal(f.node('newRoleContent').value, 'KEEP_ME'); assert.equal(f.requests.length, before);
+  f.discard(true); await f.controller.openRoleForEdit('beta');
+  assert.equal(f.node('newRoleContent').value, 'FIXTURE_B'); assert.equal(f.writes().length, 0);
+});
+
+test('a late card response never overwrites text entered while the request was pending', async () => {
+  const f = fixture(); await f.controller.refreshRoles();
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  f.hook(path => path.includes('/api/roles/content?') ? gate : undefined);
+  const pending = f.controller.openRoleForEdit('beta');
+  f.draft('draft', 'NEW_DURING_LOAD'); release(); await pending;
+  assert.equal(f.node('newRoleContent').value, 'NEW_DURING_LOAD');
+  assert.match(f.node('roleCreateMsg').textContent, /保留草稿/); assert.equal(f.writes().length, 0);
 });

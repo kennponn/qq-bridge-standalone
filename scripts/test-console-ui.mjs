@@ -75,6 +75,7 @@ try {
     const target = page.locator(selector).first();
     const view = await target.evaluate(el => el.closest('[data-page]')?.dataset.page);
     await target.evaluate(el => { if (typeof revealV2Module === 'function') revealV2Module(el); });
+    await target.evaluate(el => { if (typeof revealPersonaModule === 'function') revealPersonaModule(el); });
     if (view) await navigate(view);
     for (const details of await target.locator('xpath=ancestor::details').all()) {
       if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
@@ -475,6 +476,8 @@ try {
     // 点列表载入编辑，同时选中下拉框，但不额外发启用请求。
     await selectRole('技术伙伴');
     const beforeOpen = fixture.requests.length;
+    await reveal('#roleList');
+    if (await page.locator('#personaSearch').count()) await page.locator('#personaSearch').fill(created);
     await page.locator('#roleList .persona-item').filter({ hasText: created }).first().click();
     await page.waitForFunction((n) => document.getElementById('newRoleName').value === n
       && document.getElementById('roleInput').value === n
@@ -532,6 +535,7 @@ try {
 
   if (!original) await test('仿真提示词默认可查看、解锁后可编辑、保存后提示需重启 DSH', async () => {
     await navigate('persona');
+    await reveal('#simPromptText');
     await page.waitForFunction(() => document.getElementById('simPromptText').value.length > 0);
     assert.equal(await page.locator('#simPromptText').getAttribute('readonly'), '', '默认应为只读');
     assert.equal(await page.locator('#simPromptSave').isDisabled(), true, '只读时不应能保存');
@@ -553,6 +557,7 @@ try {
 
   if (!original) await test('仿真提示词可切换到一代/二代，两代内容相互独立', async () => {
     await navigate('persona');
+    await reveal('#simPromptPreset');
     await page.waitForFunction(() => document.getElementById('simPromptText').value.length > 0);
     const v2 = await page.locator('#simPromptText').inputValue();
     assert.match(await page.locator('#simPromptStatus').textContent(), /二代仿真|qq-chat-v2/);
@@ -568,6 +573,7 @@ try {
 
   if (!original) await test('人格注入上限可调，且随模式筛选后统计', async () => {
     await navigate('persona');
+    await reveal('#roleInjectMax');
     await page.waitForFunction(() => document.querySelectorAll('#roleList .persona-item').length > 0);
     const before = await page.locator('#roleInjectMax').inputValue();
     assert.equal(Number(before), 8000, '默认上限应为 8000');

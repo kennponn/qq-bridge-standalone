@@ -1899,6 +1899,38 @@ button:active:not(:disabled) {
   select,select option,select optgroup { forced-color-adjust:auto }
   .v2-module-nav .v2-module-tab[aria-selected="true"] { border:3px solid Highlight; border-bottom-color:Highlight }
 }
+/* Persona panels share the high-contrast module strip, not the V2 form state. */
+.persona-module-nav { grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:16px }
+.persona-current { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; font-size:14px; color:var(--text) }
+.persona-current > span { margin-left:auto; color:var(--muted) }
+.persona-module-panel { min-width:0; padding-top:14px; outline-offset:4px }
+.persona-module-panel :is(input,textarea,select,button,summary) { scroll-margin-top:100px; scroll-margin-bottom:140px }
+#roleCreateMsg:not(:empty) { padding:10px 12px; border:1px solid var(--border-input); border-radius:8px; background:var(--surface-sunken) }
+#roleCreateMsg:empty { display:none }
+.persona-picker { padding-bottom:12px; border-bottom:1px solid var(--border) }
+.persona-picker > label { margin-top:0; font-weight:600 }
+.persona-library-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin:16px 0 10px }
+.persona-library-heading h3 { margin:0; font-size:15px }
+.persona-library-heading .meta { display:block; margin:2px 0 0 }
+#section-persona .persona-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+#section-persona .persona-item { min-width:0; padding:10px 12px; border-color:var(--border-input) }
+#section-persona .persona-item.active { box-shadow:inset 4px 0 var(--accent); border-color:var(--accent-border) }
+#section-persona .persona-item-head strong { font-size:14px; overflow-wrap:anywhere }
+#section-persona .persona-item small { font-size:12px; color:var(--muted); display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden }
+.persona-pagination { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px }
+.persona-pagination .meta { flex:1; margin:0 }
+.persona-editor label { margin-top:14px }
+#section-persona .role-editor { min-height:220px; height:clamp(220px,36vh,380px); font-size:14px }
+.persona-editor-toolbar { position:sticky; bottom:8px; z-index:8; padding:12px; margin-top:12px; border:1px solid var(--border-input); border-radius:8px; background:var(--surface) }
+#section-persona .code-area { min-height:200px; height:clamp(200px,32vh,340px); font-size:14px }
+#section-persona .layer-heading { margin-top:18px }
+@media (max-width:640px) {
+  #section-persona .persona-list { grid-template-columns:minmax(0,1fr) }
+  .persona-module-nav .v2-module-tab { font-size:14px }
+  .persona-picker .row > select { flex-basis:100%; width:100% }
+  .persona-editor-toolbar { gap:8px; padding:10px }
+  .persona-editor-toolbar button { padding:8px 10px; flex:1 1 auto }
+}
 </style>
 </head>
 <body>
@@ -2034,49 +2066,16 @@ button:active:not(:disabled) {
     </section>
 <section id="section-persona" data-page="persona" class="card span-all">
       <h2>人格与角色</h2>
-      <div class="meta">当前人格：<span id="roleText">-</span> ｜ 状态：<span id="roleModeText">-</span></div>
-
-      <div class="layer-note">
-        <strong>两层提示词的分工</strong>
-        <ol>
-          <li><b>仿真提示词</b>（预设内置）：AI 怎么调工具、怎么参与群聊 —— <i>行为与协议</i>。</li>
-          <li><b>人格提示词</b>（本页编辑）：AI 是谁、什么性格、怎么说话 —— <i>人设与语气</i>。</li>
-        </ol>
-        <p id="personaLayerNote">只有当前启用的人格会注入。点「保存并启用」可保存后直接切换；「仅保存」不会切换人格，修改当前启用的人格会立即更新。</p>
+      <div class="persona-current">当前人格：<strong id="roleText">-</strong><span>状态：<span id="roleModeText">-</span></span></div>
+      <div class="v2-module-nav persona-module-nav" id="personaModuleTabs" role="tablist" aria-label="人格管理模块">
+        <button type="button" class="v2-module-tab" id="personaTab-library" role="tab" data-persona-tab="library" aria-controls="personaPanel-library" aria-selected="true" tabindex="0">人格库</button>
+        <button type="button" class="v2-module-tab" id="personaTab-editor" role="tab" data-persona-tab="editor" aria-controls="personaPanel-editor" aria-selected="false" tabindex="-1">编辑人格</button>
+        <button type="button" class="v2-module-tab" id="personaTab-advanced" role="tab" data-persona-tab="advanced" aria-controls="personaPanel-advanced" aria-selected="false" tabindex="-1">高级设置</button>
       </div>
-
-      <h3>人格列表 <span class="meta" id="roleListHint"></span></h3>
-      <div id="roleList" class="persona-list">加载中…</div>
-
-      <details class="settings-group" open>
-        <summary>编辑人格提示词</summary>
-        <div class="settings-content">
-          <div class="meta" id="roleEditorMeta">填好名称与内容后点「保存并启用」，即可直接使用这个人格。</div>
-          <div class="row">
-            <label style="flex:0 0 auto">注入上限（字符）</label>
-            <input type="number" id="roleInjectMax" min="1000" max="20000" step="500" style="flex:0 1 140px">
-            <button id="roleInjectMaxSave" class="small">保存上限</button>
-            <span class="meta" id="roleInjectMaxMsg">每条约 4~6k token 的成本护栏；按模式筛完小节后才截断。</span>
-          </div>
-          <label>人格名（中文 / 字母 / 数字 / 横线）</label>
-          <input type="text" id="newRoleName" placeholder="如：猫娘">
-          <label>人格提示词（Markdown）</label>
-          <textarea id="newRoleContent" class="role-editor" placeholder="- 性格：…&#10;- 说话风格：…&#10;- 背景设定：…"></textarea>
-          <div class="row" style="margin-top:8px">
-            <button id="roleCreate" type="button">保存并启用</button>
-            <button id="roleSaveOnly" type="button">仅保存</button>
-            <button id="roleDuplicate">另存为副本</button>
-            <button id="roleDelete" class="danger">删除</button>
-            <button id="roleFormReset">清空表单</button>
-            <span class="meta" id="roleCreateMsg"></span>
-          </div>
-          <div class="meta err" id="roleEditorWarnings"></div>
-        </div>
-      </details>
-
-      <details class="settings-group" open>
-        <summary>切换当前启用的人格</summary>
-        <div class="settings-content">
+      <p class="meta persona-action-status" id="roleCreateMsg" role="status" aria-live="polite"></p>
+      <div class="persona-module-panel" id="personaPanel-library" role="tabpanel" data-persona-panel="library" aria-labelledby="personaTab-library" tabindex="0">
+      <div class="persona-picker">
+        <label for="roleInput">切换当前启用的人格</label>
           <div class="row" style="margin-top:10px">
             <select id="roleInput" aria-label="选择已保存的人格"><option value="">选择已保存的人格</option></select>
             <button id="roleSet" type="button">立即启用</button>
@@ -2084,9 +2083,61 @@ button:active:not(:disabled) {
           </div>
           <div class="meta" id="roleSelectionStatus" role="status">正在读取当前人格…</div>
           <div class="meta">清空当前人格后，AI 只按「仿真提示词」行动，不扮演任何角色。</div>
-        </div>
-      </details>
+      </div>
 
+      <div class="persona-library-heading">
+        <h3>已保存的人格 <span class="meta" id="roleListHint"></span></h3>
+        <button id="personaNew" type="button">新建人格</button>
+      </div>
+      <label class="sr-only" for="personaSearch">搜索人格名称</label>
+      <input type="search" id="personaSearch" placeholder="搜索人格名称…" autocomplete="off">
+      <div id="roleList" class="persona-list">加载中…</div>
+      <p id="personaNoResults" class="meta" hidden>没有匹配的人格，试试其他名称或清空搜索。</p>
+      <div class="persona-pagination" id="personaPagination" aria-label="人格列表分页">
+        <span class="meta" id="personaPageStatus" role="status" aria-live="polite"></span>
+        <button id="personaPrev" type="button" class="small">上一页</button>
+        <button id="personaNext" type="button" class="small">下一页</button>
+      </div>
+      </div>
+      <div class="persona-module-panel" id="personaPanel-editor" role="tabpanel" data-persona-panel="editor" aria-labelledby="personaTab-editor" tabindex="0" hidden>
+      <p class="meta">只编辑当前这一份人格。切换页签保留草稿，不会自动保存或启用。</p>
+      <div class="persona-editor">
+          <div class="meta" id="roleEditorMeta">填好名称与内容后点「保存并启用」，即可直接使用这个人格。</div>
+
+          <label for="newRoleName">人格名（中文 / 字母 / 数字 / 横线）</label>
+          <input type="text" id="newRoleName" placeholder="如：猫娘">
+          <label for="newRoleContent">人格提示词（Markdown）</label>
+          <textarea id="newRoleContent" class="role-editor" placeholder="- 性格：…&#10;- 说话风格：…&#10;- 背景设定：…"></textarea>
+          <div class="row persona-editor-toolbar">
+            <button id="roleCreate" type="button">保存并启用</button>
+            <button id="roleSaveOnly" type="button">仅保存</button>
+            <button id="roleDuplicate">另存为副本</button>
+            <button id="roleDelete" class="danger">删除</button>
+            <button id="roleFormReset">清空表单</button>
+          </div>
+          <div class="meta err" id="roleEditorWarnings"></div>
+      </div>
+
+
+      </div>
+      <div class="persona-module-panel" id="personaPanel-advanced" role="tabpanel" data-persona-panel="advanced" aria-labelledby="personaTab-advanced" tabindex="0" hidden>
+      <p class="meta">通常只需修改人格内容；这里管理注入上限和引擎行为协议，分别保存。</p>
+      <details class="settings-group"><summary>注入上限与使用说明</summary><div class="settings-content">
+          <div class="row">
+            <label for="roleInjectMax" style="flex:0 0 auto">注入上限（字符）</label>
+            <input type="number" id="roleInjectMax" min="1000" max="20000" step="500" style="flex:0 1 140px">
+            <button id="roleInjectMaxSave" class="small">保存上限</button>
+            <span class="meta" id="roleInjectMaxMsg">每条约 4~6k token 的成本护栏；按模式筛完小节后才截断。</span>
+          </div>
+<div class="layer-note">
+        <strong>两层提示词的分工</strong>
+        <ol>
+          <li><b>仿真提示词</b>（预设内置）：AI 怎么调工具、怎么参与群聊 —— <i>行为与协议</i>。</li>
+          <li><b>人格提示词</b>（本页编辑）：AI 是谁、什么性格、怎么说话 —— <i>人设与语气</i>。</li>
+        </ol>
+        <p id="personaLayerNote">只有当前启用的人格会注入。点「保存并启用」可保存后直接切换；「仅保存」不会切换人格，修改当前启用的人格会立即更新。</p>
+      </div>
+      </div></details>
       <h3 class="layer-heading"><span id="simPromptHeading">仿真提示词（预设内置）</span><span class="meta" id="simPromptStatus">加载中…</span></h3>
       <div class="row" style="margin-bottom:8px">
         <label style="flex:0 0 auto">仿真代次</label>
@@ -2097,7 +2148,7 @@ button:active:not(:disabled) {
         <span class="meta" id="simPromptGenerationNote">两代机制不同（一代空格分条 / 二代一切皆工具），提示词各自独立。</span>
       </div>
       <div class="meta" id="simPromptWarnings"></div>
-      <textarea id="simPromptText" class="code-area" spellcheck="false" readonly></textarea>
+      <textarea aria-labelledby="simPromptHeading" id="simPromptText" class="code-area" spellcheck="false" readonly></textarea>
       <div class="row" style="margin-top:8px">
         <button id="simPromptEdit">编辑</button>
         <button id="simPromptSave" disabled>保存并同步到 DSH</button>
@@ -2106,6 +2157,8 @@ button:active:not(:disabled) {
         <span class="meta" id="simPromptMsg"></span>
       </div>
       <div class="meta" id="simPromptRestart"></div>
+
+      </div>
     </section>
 <section id="section-social-v1" data-page="social-v1" class="card span-all">
       <h2>一代仿真模式（reserved）</h2>
@@ -3372,6 +3425,14 @@ let currentRoleName = null;
 let rolePickerDirty = false;
 let roleActionBusy = false;
 let roleEditorLoadRevision = 0;
+let roleEditorSnapshot = { name: '', content: '' };
+function roleEditorHasDraft() {
+  return document.getElementById('newRoleName').value !== roleEditorSnapshot.name
+    || document.getElementById('newRoleContent').value !== roleEditorSnapshot.content;
+}
+function confirmRoleDraftReplacement() {
+  return !roleEditorHasDraft() || confirm('编辑器里有未保存的人格修改。继续会丢弃这份草稿，确定吗？');
+}
 
 function syncCurrentRole(name) {
   currentRoleName = name || null;
@@ -3406,7 +3467,7 @@ function renderRolePicker() {
 
 function setRoleActionBusy(busy) {
   roleActionBusy = busy;
-  for (const id of ['roleCreate', 'roleSaveOnly', 'roleSet', 'roleClear', 'roleDuplicate', 'roleDelete', 'roleFormReset']) {
+  for (const id of ['roleCreate', 'roleSaveOnly', 'roleSet', 'roleClear', 'roleDuplicate', 'roleDelete', 'roleFormReset', 'personaNew']) {
     document.getElementById(id).disabled = busy;
   }
 }
@@ -3442,25 +3503,33 @@ function updateRoleEditorWarnings() {
 
 async function openRoleForEdit(name) {
   if (roleActionBusy) return;
+  if (!confirmRoleDraftReplacement()) return;
   const revision = ++roleEditorLoadRevision;
+  const draftBeforeLoad = { name: document.getElementById('newRoleName').value, content: document.getElementById('newRoleContent').value };
   setRoleMsg('读取中…');
   const res = await api('/api/roles/content?name=' + encodeURIComponent(name));
   if (roleActionBusy || revision !== roleEditorLoadRevision) return;
   if (!res.ok) { setRoleMsg(res.error || '读取失败', false); return; }
+  if (document.getElementById('newRoleName').value !== draftBeforeLoad.name || document.getElementById('newRoleContent').value !== draftBeforeLoad.content) {
+    setRoleMsg('读取期间编辑器有新修改，已保留草稿。需要载入时请重新选择人格。'); return;
+  }
   document.getElementById('newRoleName').value = name;
   document.getElementById('newRoleContent').value = res.content;
+  roleEditorSnapshot = { name, content: res.content };
   roleEditorState = { mode: 'edit', name };
   document.getElementById('roleInput').value = name;
   rolePickerDirty = true;
   renderRoleEditor();
   updateRoleEditorWarnings();
   setRoleMsg(`已载入「${name}」（${res.chars} 字符）`, true);
+  if (typeof setPersonaModule === 'function') setPersonaModule('editor', { focus: true });
 }
 
 function resetRoleForm() {
   roleEditorLoadRevision += 1;
   document.getElementById('newRoleName').value = '';
   document.getElementById('newRoleContent').value = '';
+  roleEditorSnapshot = { name: '', content: '' };
   roleEditorState = { mode: 'new', name: '' };
   renderRoleEditor();
   updateRoleEditorWarnings();
@@ -3486,7 +3555,7 @@ async function refreshRoles() {
     if (!roleCache.length) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
-      empty.innerHTML = '<strong>还没有人格</strong><p>在「编辑人格提示词」里填名称与内容，点「保存并启用」创建并使用第一个。</p>';
+      empty.innerHTML = '<strong>还没有人格</strong><p>点「新建人格」，填好名称与内容后保存即可。</p>';
       box.appendChild(empty);
     }
     for (const role of roleCache) {
@@ -3531,6 +3600,7 @@ async function refreshRoles() {
     }
     const hint = document.getElementById('roleListHint');
     if (hint) hint.textContent = roleCache.length ? `共 ${roleCache.length} 个 · 点任意一个载入编辑` : '';
+    if (typeof filterPersonaLibrary === 'function') filterPersonaLibrary();
     renderRoleEditor();
     return r;
   } catch (error) {
@@ -3734,6 +3804,7 @@ async function saveRoleEditor({ activate = false } = {}) {
     const r = await api(endpoint, 'POST', { name, content });
     if (!r.ok) { setRoleMsg(r.error || '保存失败', false); return; }
     saved = true;
+    roleEditorSnapshot = { name, content };
     roleEditorState = { mode: 'edit', name };
     renderRoleEditor();
     document.getElementById('roleEditorWarnings').textContent = (r.warnings || []).length ? '⚠️ ' + r.warnings.join('；') : '';
@@ -3771,6 +3842,7 @@ document.getElementById('roleDuplicate').addEventListener('click', async () => {
   const r = await api('/api/roles/create', 'POST', { name: target, content });
   if (!r.ok) { setRoleMsg('❌ ' + (r.error || '另存失败'), false); return; }
   document.getElementById('newRoleName').value = target;
+  roleEditorSnapshot = { name: target, content };
   roleEditorState = { mode: 'edit', name: target };
   renderRoleEditor();
   setRoleMsg(`✅ 已另存为「${target}」`, true);
@@ -3787,7 +3859,7 @@ document.getElementById('roleDelete').addEventListener('click', async () => {
   refreshRoles();
   refresh();
 });
-document.getElementById('roleFormReset').addEventListener('click', () => resetRoleForm());
+document.getElementById('roleFormReset').addEventListener('click', () => { if (!roleActionBusy && confirmRoleDraftReplacement()) resetRoleForm(); });
 document.getElementById('newRoleContent').addEventListener('input', updateRoleEditorWarnings);
 
 // ── 仿真提示词 ──────────────────────────────────────────────────────────────
@@ -5671,10 +5743,68 @@ try { savedV2Module = localStorage.getItem(v2ModuleStorageKey); } catch {}
 setV2Module(savedV2Module, { persist: false });
 // End V2 module navigation.
 
+// Persona module navigation: only the tab preference is persisted, never editor text.
+const personaModuleTabs = [...document.querySelectorAll('#personaModuleTabs [data-persona-tab]')];
+const personaModulePanels = [...document.querySelectorAll('#section-persona [data-persona-panel]')];
+function setPersonaModule(name, { focus = false, persist = true } = {}) {
+  const selected = personaModuleTabs.find(tab => tab.dataset.personaTab === name) || personaModuleTabs[0];
+  if (!selected) return;
+  for (const tab of personaModuleTabs) {
+    tab.setAttribute('aria-selected', String(tab === selected)); tab.tabIndex = tab === selected ? 0 : -1;
+  }
+  for (const panel of personaModulePanels) panel.hidden = panel.dataset.personaPanel !== selected.dataset.personaTab;
+  if (persist) { try { localStorage.setItem('qq-console-persona-module', selected.dataset.personaTab); } catch {} }
+  if (focus) { selected.scrollIntoView({ block: 'nearest', behavior: 'instant' }); selected.focus({ preventScroll: true }); }
+}
+function revealPersonaModule(target) {
+  const panel = target?.closest('[data-persona-panel]');
+  if (panel) setPersonaModule(panel.dataset.personaPanel);
+}
+for (const tab of personaModuleTabs) {
+  tab.addEventListener('click', () => setPersonaModule(tab.dataset.personaTab));
+  tab.addEventListener('keydown', event => {
+    const index = personaModuleTabs.indexOf(tab);
+    const destination = { ArrowRight: (index + 1) % personaModuleTabs.length, ArrowLeft: (index - 1 + personaModuleTabs.length) % personaModuleTabs.length, Home: 0, End: personaModuleTabs.length - 1 }[event.key];
+    if (destination === undefined) return;
+    event.preventDefault(); setPersonaModule(personaModuleTabs[destination].dataset.personaTab, { focus: true });
+  });
+}
+let savedPersonaModule;
+try { savedPersonaModule = localStorage.getItem('qq-console-persona-module'); } catch {}
+setPersonaModule(savedPersonaModule, { persist: false });
+let personaLibraryPage = 0;
+const personaPageSize = 4;
+function filterPersonaLibrary({ reset = false } = {}) {
+  if (reset) personaLibraryPage = 0;
+  const query = document.getElementById('personaSearch').value.trim().toLocaleLowerCase();
+  const cards = [...document.querySelectorAll('#roleList .persona-item')];
+  const matches = cards.filter(card => card.querySelector('strong').textContent.toLocaleLowerCase().includes(query));
+  const pages = Math.max(1, Math.ceil(matches.length / personaPageSize));
+  personaLibraryPage = Math.max(0, Math.min(personaLibraryPage, pages - 1));
+  const visible = new Set(matches.slice(personaLibraryPage * personaPageSize, (personaLibraryPage + 1) * personaPageSize));
+  for (const card of cards) card.hidden = !visible.has(card);
+  document.getElementById('personaNoResults').hidden = !cards.length || !!matches.length;
+  document.getElementById('personaPagination').hidden = !cards.length;
+  document.getElementById('personaPageStatus').textContent = matches.length
+    ? `${personaLibraryPage + 1} / ${pages} 页 · ${matches.length} 个${query ? '匹配' : '人格'}，每页最多 ${personaPageSize} 个`
+    : '0 个匹配';
+  document.getElementById('personaPrev').disabled = personaLibraryPage === 0;
+  document.getElementById('personaNext').disabled = personaLibraryPage >= pages - 1;
+}
+document.getElementById('personaSearch').addEventListener('input', () => filterPersonaLibrary({ reset: true }));
+document.getElementById('personaPrev').addEventListener('click', () => { personaLibraryPage--; filterPersonaLibrary(); });
+document.getElementById('personaNext').addEventListener('click', () => { personaLibraryPage++; filterPersonaLibrary(); });
+document.getElementById('personaNew').addEventListener('click', () => {
+  if (roleActionBusy || !confirmRoleDraftReplacement()) return;
+  resetRoleForm(); setPersonaModule('editor');
+  document.getElementById('newRoleName').focus();
+});
+// End persona module navigation.
+
 const consolePages = {
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看当前引擎的 QQ 会话映射，以及等待你回复的审批和提问。'],
-  persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
+  persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选人格、写人设、调高级参数，分开操作，不再挤在一页。'],
   'social-v2': ['二代仿真', '自主参与，恰到好处。', '按模块管理唤醒、回复、语音和记忆。不必再翻一整页设置。'],
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],
@@ -5846,6 +5976,7 @@ searchInput.addEventListener('input', () => {
     button.addEventListener('click', () => {
       setConsolePage(entry.page);
       revealV2Module(entry.target);
+      revealPersonaModule(entry.target);
       let ancestor = entry.target.closest('details');
       while (ancestor) { ancestor.open = true; ancestor = ancestor.parentElement.closest('details'); }
       if (entry.target.closest('.slang-panel')) {

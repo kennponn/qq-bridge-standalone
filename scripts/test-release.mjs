@@ -12,7 +12,7 @@ const tests = process.argv.includes('--voice') ? [
   'test-context-memory-bridge.mjs', 'test-context-memory-ui.mjs',
   'test-always-awake-bridge.mjs', 'test-always-awake-timing.mjs',
   'test-group-send-permission.mjs', 'test-muted-group-bridge.mjs',
-  'test-role-card.mjs', 'test-persona-save-ui.mjs', 'test-console-local-access.mjs',
+  'test-role-card.mjs', 'test-persona-save-ui.mjs', 'test-persona-modules-ui.mjs', 'test-console-local-access.mjs',
   'test-snowluma-upstream-health.mjs', 'test-preset-local-tools.mjs', 'test-voice-system.mjs',
 ];
 let failed = 0;
