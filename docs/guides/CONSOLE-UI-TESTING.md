@@ -12,8 +12,6 @@ node scripts/console-ui-fixture.mjs --port=4174
 
 浏览器打开终端显示的本机链接。链接中的 `fixture-console-token` 是固定的测试令牌，不是生产令牌。服务只监听 loopback；`Ctrl+C` 退出会清理临时状态。
 
-不再提供旧版 DSH 页面和旧模式的对照基线。
-
 ## 浏览器回归
 
 ```sh

@@ -1,7 +1,7 @@
 # 文档索引
 
 - [更新日志](../CHANGELOG.md)与[当前版本说明](releases/v0.4.0-r1.md)。
-- [独立引擎](guides/STANDALONE.md)：独立运行、模型配置与旧版迁移。
+- [独立引擎](guides/STANDALONE.md)：启动、模型配置、密钥管理与更新备份。
 - [语音功能](guides/VOICE.md)：接收转写、在线朗读、试听和确认发送。
 - [发布隐私检查](guides/PRIVACY.md)和[发布流程](PUBLISHING.md)。
 - [目录地图](FOLDER_MAP.md)：源代码、测试和本地私有文件的分工。

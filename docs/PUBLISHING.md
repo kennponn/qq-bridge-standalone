@@ -38,14 +38,14 @@ GitHub Actions 默认执行离线测试和发布扫描，不需要 Secrets，不
 
 ## 版本号与更新日志
 
-首个开源版本 `0.2.1-r1` 沿用已有源码版本；当前 `0.4.0-r1` 是移除旧后端支持的纯独立预发布版。含 `-rN` 的版本按预发布处理；旧 DSH 文档里的版本和已撤回标签属于上游历史，不当作本仓库的发布记录。
+首个开源版本为 `0.2.1-r1`，当前版本为 `0.4.0-r1`。含 `-rN` 的版本按预发布处理；本仓库的公开版本以发布标签和更新日志为准。
 
 后续未定稿改动先写入 `CHANGELOG.md` 的“未发布”章节。发布时按“新增、修复、文档、安全、兼容性”整理到新的版本章节，并写上实际发布日期；不要把同一天的每次文档提交都单独算一个功能版本。
 
 发布新版本时，以下位置必须同步：
 
 1. `package.json` 和 `package-lock.json` 的根包版本。可用 `npm version 新版本号 --no-git-tag-version` 更新，不要修改依赖自身的版本。
-2. `plugins/qq-mode-console/package.json`、`plugins/qq-agent-presets/package.json` 的版本，以及三个 MCP 服务中声明的项目版本：`src/mcp-host-server.js`、`src/mcp-snowluma-safe.js`、`src/mcp-web-search-safe.js`。
+2. 两个安全 MCP 服务中声明的项目版本：`src/mcp-snowluma-safe.js`、`src/mcp-web-search-safe.js`。
 3. README 的当前版本和发布链接，文档索引的当前版本链接。
 4. `CHANGELOG.md` 的版本章节、日期和比较链接，以及 `docs/releases/v新版本号.md`。
 
@@ -58,19 +58,21 @@ git diff --check
 git diff --stat
 ```
 
-版本文档检查会核对主包、锁文件、兼容插件、MCP 服务、README、更新日志和发布说明。它不能替代人工审阅更新内容。
+版本文档检查会核对主包、锁文件、安全 MCP 服务、README、更新日志和发布说明。它不能替代人工审阅更新内容。
 
 ## 发布标签与中文版本说明
 
-检查通过后提交并推送源码，再创建指向该提交的标签。下例仅演示当前版本；后续发布请替换为实际新版本，已发布标签不得覆盖或移动。
+检查通过后提交并推送源码，再创建指向该提交的标签。下例中的 `0.4.1-r1` 仅为演示，请替换为已完成版本检查、尚未发布的新版本；已发布标签不得覆盖或移动。
 
 ```powershell
 git add .
 git diff --cached --stat
 git commit -m "整理版本与中文更新日志"
 git push origin main
-git tag -a v0.3.0-r1 -m "v0.3.0-r1 模块化控制台与 MiMo 语音"
-git push origin v0.3.0-r1
+$version = "0.4.1-r1"
+$tag = "v$version"
+git tag -a $tag -m "$tag QQ Bridge Standalone"
+git push origin $tag
 ```
 
 在 GitHub 的 Releases 中选择该标签，将对应中文说明文件作为发布正文；包含 `-rN` 的版本标为预发布。下载附件应使用从该标签生成的源码归档，不包含运行目录、依赖或私人文件。归档和校验文件属于发布附件，不提交进源码仓库。
@@ -78,7 +80,7 @@ git push origin v0.3.0-r1
 若本机已安装并登录 GitHub CLI，也可执行：
 
 ```powershell
-gh release create v0.3.0-r1 --verify-tag --prerelease --title "v0.3.0-r1 模块化控制台与 MiMo 语音" --notes-file docs/releases/v0.3.0-r1.md
+gh release create $tag --verify-tag --prerelease --title "$tag QQ Bridge Standalone" --notes-file "docs/releases/$tag.md"
 ```
 
 复制版本说明到 Releases 时，将其中指向源码文档的相对链接替换为该版本的完整 GitHub 链接。发布后核对远程标签、附件、中文说明和该提交的 GitHub Actions 结果；不要对测试结果尚未完成的版本声称检查已通过。
